@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<title>Kingshot 玩家名單</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+  :root { color-scheme: light dark; }
+  body { font-family: system-ui, -apple-system, sans-serif; max-width: 760px; margin: 2rem auto; padding: 0 1rem; }
+  h1 { margin-top: 0; }
+  table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
+  th, td { padding: .5rem; border-bottom: 1px solid #ddd; text-align: left; vertical-align: middle; }
+  th { background: rgba(0,0,0,.04); }
+  input[type=text] { padding: .4rem; font: inherit; box-sizing: border-box; }
+  .add-form { display: flex; gap: .5rem; margin: 1rem 0; flex-wrap: wrap; }
+  .add-form input { flex: 1 1 8rem; }
+  button { padding: .4rem .9rem; cursor: pointer; font: inherit; }
+  button.primary { background: #1976d2; color: white; border: 0; border-radius: 4px; }
+  button.danger  { background: #d32f2f; color: white; border: 0; border-radius: 4px; }
+  .status { margin: 1rem 0; padding: .5rem .8rem; border-radius: 4px; background: #eef; }
+  .status.err { background: #fee; color: #900; }
+  .status.ok  { background: #efe; color: #060; }
+  .hidden { display: none; }
+  #me { color: #666; }
+  .footer { margin-top: 2rem; color: #888; font-size: .85em; }
+</style>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+</head>
+<body>
+<h1>Kingshot 玩家名單</h1>
+
+<!-- =====================================================================
+     Fill these two before deploying:
+     - GOOGLE_CLIENT_ID: from Google Cloud Console (OAuth Web client)
+     - WORKER_URL: your deployed Cloudflare Worker URL (no trailing slash)
+     ===================================================================== -->
+<script>
+  window.GOOGLE_CLIENT_ID = "REPLACE_WITH_GOOGLE_CLIENT_ID";
+  window.WORKER_URL       = "REPLACE_WITH_WORKER_URL";
+</script>
+
+<section id="signin">
+  <p>請先用 Google 登入(僅允許名單內 email):</p>
+  <div id="g_id_onload" data-callback="onSignIn" data-auto_prompt="false"></div>
+  <div class="g_id_signin" data-type="standard"></div>
+</section>
+
+<section id="app" class="hidden">
+  <p>已登入:<span id="me"></span> <button onclick="signOut()">登出</button></p>
+  <div id="status" class="status hidden"></div>
+
+  <div class="add-form">
+    <input id="new-id" type="text" placeholder="玩家 ID (數字)" inputmode="numeric">
+    <input id="new-name" type="text" placeholder="角色名稱(可留空)">
+    <button class="primary" onclick="addPlayer()">新增到表格</button>
+  </div>
+
+  <table>
+    <thead><tr><th>ID</th><th>角色名稱</th><th></th></tr></thead>
+    <tbody id="rows"></tbody>
+  </table>
+
+  <p style="margin-top:1rem">
+    <button class="primary" onclick="save()">儲存並推到 GitHub</button>
+    <button onclick="loadCsv()">重新讀取</button>
+  </p>
+
+  <p class="footer">編輯只是本機暫存;按下「儲存並推到 GitHub」才會 commit。</p>
+</section>
+
+<script>
+let idToken = null;
+let csvSha = null;
+let header = "ID,角色名稱";
+let rows = []; // [{id, name}]
+
+window.addEventListener("load", () => {
+  document.getElementById("g_id_onload").setAttribute("data-client_id", window.GOOGLE_CLIENT_ID);
+});
+
+function onSignIn(resp) {
+  idToken = resp.credential;
+  const p = JSON.parse(atob(resp.credential.split(".")[1].replace(/-/g,"+").replace(/_/g,"/")));
+  document.getElementById("me").textContent = p.email;
+  document.getElementById("signin").classList.add("hidden");
+  document.getElementById("app").classList.remove("hidden");
+  loadCsv();
+}
+
+function signOut() {
+  idToken = null;
+  rows = [];
+  csvSha = null;
+  document.getElementById("signin").classList.remove("hidden");
+  document.getElementById("app").classList.add("hidden");
+}
+
+function setStatus(text, kind = "") {
+  const el = document.getElementById("status");
+  el.textContent = text;
+  el.className = "status " + kind;
+  el.classList.remove("hidden");
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;" }[c]));
+}
+
+function renderRows() {
+  const tbody = document.getElementById("rows");
+  tbody.innerHTML = "";
+  rows.forEach((r, i) => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td>${escapeHtml(r.id)}</td><td>${escapeHtml(r.name || "")}</td><td><button class="danger" onclick="removeRow(${i})">刪除</button></td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+function parseCsv(text) {
+  // CSV may begin with a UTF-8 BOM
+  if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+  const lines = text.split(/\r?\n/);
+  const hdr = lines.shift();
+  const out = [];
+  for (const line of lines) {
+    if (!line.trim()) continue;
+    const idx = line.indexOf(",");
+    if (idx < 0) { out.push({ id: line, name: "" }); continue; }
+    out.push({ id: line.slice(0, idx), name: line.slice(idx + 1) });
+  }
+  return { header: hdr, rows: out };
+}
+
+function serializeCsv() {
+  return header + "\n" + rows.map((r) => `${r.id},${r.name || ""}`).join("\n") + "\n";
+}
+
+async function loadCsv() {
+  setStatus("讀取中...");
+  try {
+    const r = await fetch(window.WORKER_URL + "/api/csv", { headers: { Authorization: "Bearer " + idToken } });
+    if (!r.ok) throw new Error(await r.text());
+    const j = await r.json();
+    csvSha = j.sha;
+    const parsed = parseCsv(j.content);
+    header = parsed.header || "ID,角色名稱";
+    rows = parsed.rows;
+    renderRows();
+    setStatus(`已載入 ${rows.length} 筆`, "ok");
+  } catch (e) {
+    setStatus("讀取失敗: " + e.message, "err");
+  }
+}
+
+function addPlayer() {
+  const id = document.getElementById("new-id").value.trim();
+  const name = document.getElementById("new-name").value.trim();
+  if (!/^\d+$/.test(id)) { setStatus("ID 必須是數字", "err"); return; }
+  if (rows.some((r) => r.id === id)) { setStatus("ID 已存在", "err"); return; }
+  rows.push({ id, name });
+  document.getElementById("new-id").value = "";
+  document.getElementById("new-name").value = "";
+  renderRows();
+  setStatus(`已加入 ${id}(尚未儲存)`);
+}
+
+function removeRow(idx) {
+  const r = rows[idx];
+  rows.splice(idx, 1);
+  renderRows();
+  setStatus(`已刪除 ${r.id}(尚未儲存)`);
+}
+
+async function save() {
+  setStatus("儲存中...");
+  try {
+    const r = await fetch(window.WORKER_URL + "/api/csv", {
+      method: "PUT",
+      headers: { Authorization: "Bearer " + idToken, "Content-Type": "application/json" },
+      body: JSON.stringify({ content: serializeCsv(), sha: csvSha }),
+    });
+    if (!r.ok) throw new Error(await r.text());
+    const j = await r.json();
+    csvSha = j.sha;
+    setStatus(`✅ 已 commit (${j.commit.slice(0,7)})`, "ok");
+  } catch (e) {
+    setStatus("儲存失敗: " + e.message, "err");
+  }
+}
+</script>
+</body>
+</html>

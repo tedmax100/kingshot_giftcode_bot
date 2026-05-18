@@ -4,3 +4,5 @@ __pycache__/
 *.bak
 .playwright-mcp/
 .claude/
+node_modules/
+.wrangler/
