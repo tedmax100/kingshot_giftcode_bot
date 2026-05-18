@@ -1,0 +1,43 @@
+name: Daily bulk redeem
+
+on:
+  schedule:
+    # 12:00 Asia/Taipei (UTC+8) == 04:00 UTC
+    - cron: "0 4 * * *"
+  workflow_dispatch:
+    inputs:
+      latest:
+        description: "Only redeem the N codes with the latest expiry"
+        required: false
+        default: "2"
+
+jobs:
+  redeem:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('requirements.txt') }}
+
+      - name: Install Playwright browsers
+        run: python -m playwright install --with-deps chromium
+
+      - name: Run bulk redeem
+        env:
+          LATEST: ${{ github.event.inputs.latest || '2' }}
+        run: python bulk_redeem.py --codes-from-scrape --latest "$LATEST"
