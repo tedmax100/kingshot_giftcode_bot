@@ -35,8 +35,8 @@
      - WORKER_URL: your deployed Cloudflare Worker URL (no trailing slash)
      ===================================================================== -->
 <script>
-  window.GOOGLE_CLIENT_ID = "REPLACE_WITH_GOOGLE_CLIENT_ID";
-  window.WORKER_URL       = "REPLACE_WITH_WORKER_URL";
+  window.GOOGLE_CLIENT_ID = "28393022343-te1mhl6gclb02tojo9lafpfbm0g22k1l.apps.googleusercontent.com";
+  window.WORKER_URL       = "https://kingshot-csv.tedmax100.workers.dev";
 </script>
 
 <section id="signin">
@@ -73,9 +73,14 @@ let idToken = null;
 let csvSha = null;
 let header = "ID,角色名稱";
 let rows = []; // [{id, name}]
+let dirty = false;
 
 window.addEventListener("load", () => {
   document.getElementById("g_id_onload").setAttribute("data-client_id", window.GOOGLE_CLIENT_ID);
+});
+
+window.addEventListener("beforeunload", (e) => {
+  if (dirty) { e.preventDefault(); e.returnValue = ""; }
 });
 
 function onSignIn(resp) {
@@ -91,6 +96,7 @@ function signOut() {
   idToken = null;
   rows = [];
   csvSha = null;
+  dirty = false;
   document.getElementById("signin").classList.remove("hidden");
   document.getElementById("app").classList.add("hidden");
 }
@@ -145,6 +151,7 @@ async function loadCsv() {
     const parsed = parseCsv(j.content);
     header = parsed.header || "ID,角色名稱";
     rows = parsed.rows;
+    dirty = false;
     renderRows();
     setStatus(`已載入 ${rows.length} 筆`, "ok");
   } catch (e) {
@@ -158,6 +165,7 @@ function addPlayer() {
   if (!/^\d+$/.test(id)) { setStatus("ID 必須是數字", "err"); return; }
   if (rows.some((r) => r.id === id)) { setStatus("ID 已存在", "err"); return; }
   rows.push({ id, name });
+  dirty = true;
   document.getElementById("new-id").value = "";
   document.getElementById("new-name").value = "";
   renderRows();
@@ -167,6 +175,7 @@ function addPlayer() {
 function removeRow(idx) {
   const r = rows[idx];
   rows.splice(idx, 1);
+  dirty = true;
   renderRows();
   setStatus(`已刪除 ${r.id}(尚未儲存)`);
 }
@@ -182,6 +191,7 @@ async function save() {
     if (!r.ok) throw new Error(await r.text());
     const j = await r.json();
     csvSha = j.sha;
+    dirty = false;
     setStatus(`✅ 已 commit (${j.commit.slice(0,7)})`, "ok");
   } catch (e) {
     setStatus("儲存失敗: " + e.message, "err");
