@@ -41,7 +41,10 @@
 
 <section id="signin">
   <p>請先用 Google 登入(僅允許名單內 email):</p>
-  <div id="g_id_onload" data-callback="onSignIn" data-auto_prompt="false"></div>
+  <div id="g_id_onload"
+       data-client_id="28393022343-te1mhl6gclb02tojo9lafpfbm0g22k1l.apps.googleusercontent.com"
+       data-callback="onSignIn"
+       data-auto_prompt="false"></div>
   <div class="g_id_signin" data-type="standard"></div>
 </section>
 
@@ -74,10 +77,6 @@ let csvSha = null;
 let header = "ID,角色名稱";
 let rows = []; // [{id, name}]
 let dirty = false;
-
-window.addEventListener("load", () => {
-  document.getElementById("g_id_onload").setAttribute("data-client_id", window.GOOGLE_CLIENT_ID);
-});
 
 window.addEventListener("beforeunload", (e) => {
   if (dirty) { e.preventDefault(); e.returnValue = ""; }
