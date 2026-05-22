@@ -11,6 +11,9 @@ on:
         required: false
         default: "2"
 
+permissions:
+  contents: write
+
 jobs:
   redeem:
     runs-on: ubuntu-latest
@@ -41,3 +44,15 @@ jobs:
         env:
           LATEST: ${{ github.event.inputs.latest || '2' }}
         run: python bulk_redeem.py --codes-from-scrape --latest "$LATEST"
+
+      - name: Commit refreshed player names
+        run: |
+          if [[ -n "$(git status --porcelain kingshot_players.csv)" ]]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add kingshot_players.csv
+            git commit -m "Refresh player names via bulk redeem"
+            git push
+          else
+            echo "No name changes to commit."
+          fi

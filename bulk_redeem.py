@@ -80,6 +80,7 @@ def run(csv_path: Path, codes: list[str], headless: bool, timeout_ms: int) -> in
 
     per_code: dict[str, Counter[str]] = {c: Counter() for c in codes}
     failures: list[tuple[str, str, str]] = []  # (player_id, code, reason)
+    names_changed = False
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=headless)
@@ -106,6 +107,17 @@ def run(csv_path: Path, codes: list[str], headless: bool, timeout_ms: int) -> in
                         per_code[code]["login_error"] += 1
                         failures.append((player_id, code, f"login_error: {exc}"))
                     continue
+
+                if name:
+                    if len(row) < 2:
+                        row.extend([""] * (2 - len(row)))
+                    if row[1] != name:
+                        logger.info(
+                            "player_id=%s name update %r -> %r",
+                            player_id, row[1], name,
+                        )
+                        row[1] = name
+                        names_changed = True
 
                 for code_idx, code in enumerate(codes):
                     if code_idx > 0:
@@ -134,6 +146,11 @@ def run(csv_path: Path, codes: list[str], headless: bool, timeout_ms: int) -> in
         finally:
             context.close()
             browser.close()
+
+    if names_changed:
+        with csv_path.open("w", newline="", encoding="utf-8") as f:
+            csv.writer(f, lineterminator="\n").writerows(rows)
+        logger.info("wrote updated names back to %s", csv_path)
 
     logger.info("=== summary ===")
     for code in codes:
