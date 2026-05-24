@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Scrape active Kingshot gift codes from kingshotguides.com.
+"""Scrape active Kingshot gift codes from kingshot.net.
 
 Outputs one code per line on stdout (suitable for piping).
 """
@@ -13,13 +13,40 @@ from datetime import datetime, timezone
 import requests
 from bs4 import BeautifulSoup
 
-URL = "https://kingshotguides.com/guide/active-giftcodes-and-how-to-redeem/"
+URL = "https://kingshot.net/gift-codes"
 
 logger = logging.getLogger("kingshot.scrape_codes")
 
-# Lines look like: "KS0518 - Expires: May 21, 2026 00:00 UTC"
-LINE_RE = re.compile(r"^\s*(\S+)\s*-\s*Expires:\s*(.+?)\s*UTC\s*$")
-EXPIRY_FMT = "%b %d, %Y %H:%M"
+# Each card renders the code as <p class="font-mono ...">CODE</p>
+CODE_P_CLASS_RE = re.compile(r"\bfont-mono\b")
+# Optional expiry line inside the card, e.g. "Expires: 12/31/2026"
+EXPIRY_RE = re.compile(r"Expires?:\s*(\d{1,2}/\d{1,2}/\d{4})", re.IGNORECASE)
+EXPIRY_FMT = "%m/%d/%Y"
+# Placeholder expiry for codes that don't publish one — sorts last-forever for --latest
+NO_EXPIRY = datetime.max.replace(tzinfo=timezone.utc)
+
+
+def _find_active_section(soup: BeautifulSoup):
+    """Return the container that holds only the Active Gift Codes cards."""
+    heading = soup.find(
+        lambda tag: tag.name in {"h1", "h2", "h3"}
+        and "active gift codes" in tag.get_text(strip=True).lower()
+    )
+    if heading is None:
+        raise RuntimeError("could not find 'Active Gift Codes' heading on the page")
+
+    # The cards live in a sibling grid container after the heading's wrapper.
+    # Walk up until we find a node whose next sibling contains the cards grid.
+    node = heading
+    while node is not None:
+        sibling = node.find_next_sibling()
+        if sibling is not None and sibling.find(class_=CODE_P_CLASS_RE):
+            return sibling
+        node = node.parent
+        # Stop climbing past the document root.
+        if node is soup:
+            break
+    raise RuntimeError("could not locate cards grid after 'Active Gift Codes'")
 
 
 def fetch_active_codes(timeout: int = 15) -> list[tuple[str, datetime]]:
@@ -27,24 +54,27 @@ def fetch_active_codes(timeout: int = 15) -> list[tuple[str, datetime]]:
     resp.raise_for_status()
     soup = BeautifulSoup(resp.text, "html.parser")
 
-    ul = soup.select_one("ul.kgc-active-list")
-    if ul is None:
-        raise RuntimeError("could not find ul.kgc-active-list on the page")
+    section = _find_active_section(soup)
 
     now = datetime.now(timezone.utc)
     codes: list[tuple[str, datetime]] = []
-    for li in ul.find_all("li"):
-        text = li.get_text(" ", strip=True)
-        m = LINE_RE.match(text)
-        if not m:
-            logger.warning("unparseable line: %r", text)
+    for card in section.find_all(attrs={"data-slot": "card"}):
+        code_el = card.find("p", class_=CODE_P_CLASS_RE)
+        if code_el is None:
             continue
-        code, expiry_str = m.group(1), m.group(2)
-        try:
-            expiry = datetime.strptime(expiry_str, EXPIRY_FMT).replace(tzinfo=timezone.utc)
-        except ValueError as exc:
-            logger.warning("bad expiry %r for %s: %s", expiry_str, code, exc)
+        code = code_el.get_text(strip=True)
+        if not code:
             continue
+
+        expiry = NO_EXPIRY
+        m = EXPIRY_RE.search(card.get_text(" ", strip=True))
+        if m:
+            try:
+                expiry = datetime.strptime(m.group(1), EXPIRY_FMT).replace(tzinfo=timezone.utc)
+            except ValueError as exc:
+                logger.warning("bad expiry %r for %s: %s", m.group(1), code, exc)
+                expiry = NO_EXPIRY
+
         if expiry <= now:
             logger.info("skipping expired code=%s expiry=%s", code, expiry.isoformat())
             continue
