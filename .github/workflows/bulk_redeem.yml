@@ -7,9 +7,13 @@ on:
   workflow_dispatch:
     inputs:
       latest:
-        description: "Only redeem the N codes with the latest expiry"
+        description: "Only redeem the N codes with the latest expiry (ignored if codes given)"
         required: false
         default: "2"
+      codes:
+        description: "Comma/space-separated gift codes (overrides scrape)"
+        required: false
+        default: ""
 
 permissions:
   contents: write
@@ -43,7 +47,17 @@ jobs:
       - name: Run bulk redeem
         env:
           LATEST: ${{ github.event.inputs.latest || '2' }}
-        run: python bulk_redeem.py --codes-from-scrape --latest "$LATEST"
+          CODES: ${{ github.event.inputs.codes }}
+        run: |
+          if [[ -n "$CODES" ]]; then
+            args=()
+            for c in $(echo "$CODES" | tr ',' ' '); do
+              args+=(--code "$c")
+            done
+            python bulk_redeem.py "${args[@]}"
+          else
+            python bulk_redeem.py --codes-from-scrape --latest "$LATEST"
+          fi
 
       - name: Commit refreshed player names
         run: |
