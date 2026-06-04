@@ -13,7 +13,7 @@ const TOKENINFO = "https://oauth2.googleapis.com/tokeninfo?id_token=";
 function corsHeaders(origin) {
   return {
     "Access-Control-Allow-Origin": origin,
-    "Access-Control-Allow-Methods": "GET, PUT, OPTIONS",
+    "Access-Control-Allow-Methods": "GET, PUT, POST, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type, Authorization",
     "Vary": "Origin",
   };
@@ -94,6 +94,24 @@ async function ghPutCsv(env, content, sha, email) {
   return { commit: j.commit.sha, sha: j.content.sha };
 }
 
+async function ghDispatchRedeem(env, codes, email) {
+  const wf = env.REDEEM_WORKFLOW || "bulk_redeem.yml";
+  const url = `${GH_API}/repos/${env.GH_OWNER}/${env.GH_REPO}/actions/workflows/${wf}/dispatches`;
+  const r = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${env.GITHUB_TOKEN}`,
+      "User-Agent": "kingshot-csv-worker",
+      "Accept": "application/vnd.github+json",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ ref: env.GH_BRANCH || "main", inputs: { codes } }),
+  });
+  // GitHub returns 204 No Content on a successful dispatch.
+  if (!r.ok) throw new Error(`GH dispatch ${r.status}: ${await r.text()}`);
+  return { ok: true };
+}
+
 export default {
   async fetch(req, env) {
     const origin = req.headers.get("Origin");
@@ -137,6 +155,22 @@ export default {
         const out = await ghPutCsv(env, body.content, body.sha, v.email);
         return withCors(
           new Response(JSON.stringify(out), { headers: { "Content-Type": "application/json" } }),
+          okOrigin,
+        );
+      }
+      if (url.pathname === "/api/redeem" && req.method === "POST") {
+        const body = await req.json();
+        const codes = (typeof body.codes === "string" ? body.codes : "").trim();
+        if (!codes) {
+          return withCors(new Response("codes required", { status: 400 }), okOrigin);
+        }
+        // Gift codes are alphanumeric; allow comma/space separators only.
+        if (!/^[A-Za-z0-9]+([,\s]+[A-Za-z0-9]+)*$/.test(codes)) {
+          return withCors(new Response("invalid code format", { status: 400 }), okOrigin);
+        }
+        await ghDispatchRedeem(env, codes, v.email);
+        return withCors(
+          new Response(JSON.stringify({ ok: true }), { headers: { "Content-Type": "application/json" } }),
           okOrigin,
         );
       }

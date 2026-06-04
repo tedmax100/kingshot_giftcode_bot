@@ -23,6 +23,9 @@
   .hidden { display: none; }
   #me { color: #666; }
   .footer { margin-top: 2rem; color: #888; font-size: .85em; }
+  .redeem-box { border: 1px solid #ddd; border-radius: 6px; margin: 1rem 0; padding: .5rem 1rem 0; }
+  .redeem-box legend { padding: 0 .4rem; color: #1976d2; font-weight: 600; }
+  .redeem-box .footer { margin: .3rem 0 .8rem; }
 </style>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
@@ -51,6 +54,15 @@
 <section id="app" class="hidden">
   <p>已登入:<span id="me"></span> <button onclick="signOut()">登出</button></p>
   <div id="status" class="status hidden"></div>
+
+  <fieldset class="redeem-box">
+    <legend>領取 Gift Code</legend>
+    <div class="add-form">
+      <input id="giftcode" type="text" placeholder="Gift code(多組用逗號分隔)">
+      <button class="primary" onclick="redeem()">領取</button>
+    </div>
+    <p class="footer">按下後會觸發 GitHub Action(Daily bulk redeem)對全體玩家領取。</p>
+  </fieldset>
 
   <div class="add-form">
     <input id="new-id" type="text" placeholder="玩家 ID (數字)" inputmode="numeric">
@@ -177,6 +189,25 @@ function removeRow(idx) {
   dirty = true;
   renderRows();
   setStatus(`已刪除 ${r.id}(尚未儲存)`);
+}
+
+async function redeem() {
+  const codes = document.getElementById("giftcode").value.trim();
+  if (!codes) { setStatus("請輸入 gift code", "err"); return; }
+  if (!confirm(`確定要對全體玩家領取以下 gift code 嗎?\n${codes}`)) return;
+  setStatus("觸發領取中...");
+  try {
+    const r = await fetch(window.WORKER_URL + "/api/redeem", {
+      method: "POST",
+      headers: { Authorization: "Bearer " + idToken, "Content-Type": "application/json" },
+      body: JSON.stringify({ codes }),
+    });
+    if (!r.ok) throw new Error(await r.text());
+    document.getElementById("giftcode").value = "";
+    setStatus("✅ 已觸發 Daily bulk redeem,請到 GitHub Actions 查看進度", "ok");
+  } catch (e) {
+    setStatus("觸發失敗: " + e.message, "err");
+  }
 }
 
 async function save() {
