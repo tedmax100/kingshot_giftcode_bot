@@ -19,8 +19,9 @@ from playwright.sync_api import Page, TimeoutError as PWTimeout, sync_playwright
 from scrape_codes import fetch_active_codes
 
 URL = "https://ks-giftcode.centurygame.com/"
-MSG_SUCCESS = "Redeemed, please claim the rewards in your mail!"
-MSG_ALREADY = "Already claimed, unable to claim again."
+MSG_SUCCESS = "Redeemed successfully. Please check your mail for rewards!"
+MSG_ALREADY = "Gift has already been claimed!"
+MSG_BAD_CHARACTER = "Character info is incorrect. Please confirm and try again."
 
 logger = logging.getLogger("kingshot.bulk_redeem")
 
@@ -30,6 +31,8 @@ def classify(msg: str) -> str:
         return "success"
     if msg == MSG_ALREADY:
         return "already_claimed"
+    if msg == MSG_BAD_CHARACTER:
+        return "bad_character"
     return "other"
 
 
@@ -116,7 +119,7 @@ def run(csv_path: Path, codes: list[str], kingdom: str, headless: bool, timeout_
                         "player_id=%s name=%r code=%s outcome=%s msg=%r",
                         player_id, name, code, outcome, msg,
                     )
-                    if outcome == "other":
+                    if outcome in ("other", "bad_character"):
                         failures.append((player_id, code, msg))
         finally:
             context.close()
@@ -126,8 +129,9 @@ def run(csv_path: Path, codes: list[str], kingdom: str, headless: bool, timeout_
     for code in codes:
         c = per_code[code]
         logger.info(
-            "code=%s success=%d already=%d other=%d error=%d",
-            code, c["success"], c["already_claimed"], c["other"], c["error"],
+            "code=%s success=%d already=%d bad_character=%d other=%d error=%d",
+            code, c["success"], c["already_claimed"], c["bad_character"],
+            c["other"], c["error"],
         )
     if failures:
         logger.info("=== failures / unexpected outcomes ===")
