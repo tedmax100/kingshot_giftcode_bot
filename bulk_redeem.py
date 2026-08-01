@@ -3,6 +3,10 @@
 
 Codes can be supplied via repeated --code flags or by passing --codes-from-scrape
 to fetch the current active list from kingshotguides.com.
+
+The site requires a Kingdom alongside the Player ID. Each player's kingdom is
+cached in the CSV's Kingdom column; players without one are probed against the
+--kingdom candidates in order and the accepted value is written back.
 """
 
 import argparse
@@ -22,6 +26,9 @@ URL = "https://ks-giftcode.centurygame.com/"
 MSG_SUCCESS = "Redeemed successfully. Please check your mail for rewards!"
 MSG_ALREADY = "Gift has already been claimed!"
 MSG_BAD_CHARACTER = "Character info is incorrect. Please confirm and try again."
+
+KINGDOM_COL = "Kingdom"
+DEFAULT_KINGDOMS = ["1034", "1000"]
 
 logger = logging.getLogger("kingshot.bulk_redeem")
 
@@ -77,7 +84,28 @@ def jitter_sleep() -> None:
     time.sleep(delay)
 
 
-def run(csv_path: Path, codes: list[str], kingdom: str, headless: bool, timeout_ms: int) -> int:
+def resolve_kingdom(page: Page, player_id: str, kingdoms: list[str], code: str,
+                    timeout_ms: int) -> tuple[str | None, str]:
+    """Try each candidate kingdom until one is accepted for this player.
+
+    The site gives no way to look a player's kingdom up, so the redeem itself is
+    the probe: a wrong kingdom comes back as MSG_BAD_CHARACTER. Returns the
+    kingdom that worked (or None if none did) plus that attempt's message, so
+    the caller can count the redeem instead of repeating it.
+    """
+    msg = ""
+    for i, kingdom in enumerate(kingdoms):
+        if i > 0:
+            jitter_sleep()
+        msg = submit_code(page, player_id, kingdom, code, timeout_ms)
+        if classify(msg) != "bad_character":
+            return kingdom, msg
+        logger.debug("player_id=%s kingdom=%s rejected", player_id, kingdom)
+    return None, msg
+
+
+def run(csv_path: Path, codes: list[str], kingdoms: list[str],
+        headless: bool, timeout_ms: int) -> int:
     with csv_path.open(newline="", encoding="utf-8-sig") as f:
         rows = list(csv.reader(f))
 
@@ -85,11 +113,23 @@ def run(csv_path: Path, codes: list[str], kingdom: str, headless: bool, timeout_
         logger.error("unexpected CSV header: %r", rows[0] if rows else None)
         return 1
 
+    # The Kingdom column caches each player's resolved kingdom across runs.
+    header = rows[0]
+    if KINGDOM_COL not in header:
+        header.append(KINGDOM_COL)
+    kingdom_col = header.index(KINGDOM_COL)
+
     data_rows = [r for r in rows[1:] if r and r[0].strip()]
-    logger.info("starting bulk redeem codes=%s players=%d", codes, len(data_rows))
+    for row in data_rows:
+        while len(row) <= kingdom_col:
+            row.append("")
+
+    logger.info("starting bulk redeem codes=%s players=%d kingdoms=%s",
+                codes, len(data_rows), kingdoms)
 
     per_code: dict[str, Counter[str]] = {c: Counter() for c in codes}
     failures: list[tuple[str, str, str]] = []  # (player_id, code, reason)
+    csv_changed = False
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=headless)
@@ -101,12 +141,28 @@ def run(csv_path: Path, codes: list[str], kingdom: str, headless: bool, timeout_
             for idx, row in enumerate(data_rows):
                 player_id = row[0].strip()
                 name = row[1] if len(row) > 1 else ""
+                known = row[kingdom_col].strip()
+                # A cached kingdom is used as-is; otherwise probe the candidates
+                # in order and remember whichever one the site accepts.
+                kingdom: str | None = known or None
 
                 for code_idx, code in enumerate(codes):
                     if idx > 0 or code_idx > 0:
                         jitter_sleep()
                     try:
-                        msg = submit_code(page, player_id, kingdom, code, timeout_ms)
+                        if kingdom is None:
+                            kingdom, msg = resolve_kingdom(
+                                page, player_id, kingdoms, code, timeout_ms)
+                            if kingdom is None:
+                                logger.warning(
+                                    "player_id=%s no kingdom matched %s", player_id, kingdoms)
+                            else:
+                                logger.info("player_id=%s resolved kingdom=%s",
+                                            player_id, kingdom)
+                                row[kingdom_col] = kingdom
+                                csv_changed = True
+                        else:
+                            msg = submit_code(page, player_id, kingdom, code, timeout_ms)
                     except Exception as exc:
                         logger.warning("player_id=%s code=%s error: %s", player_id, code, exc)
                         per_code[code]["error"] += 1
@@ -121,9 +177,22 @@ def run(csv_path: Path, codes: list[str], kingdom: str, headless: bool, timeout_
                     )
                     if outcome in ("other", "bad_character"):
                         failures.append((player_id, code, msg))
+
+                    if kingdom is None:
+                        # No candidate was accepted — the remaining codes would
+                        # fail identically, so don't re-probe for each one.
+                        for skipped in codes[code_idx + 1:]:
+                            per_code[skipped]["bad_character"] += 1
+                            failures.append((player_id, skipped, msg))
+                        break
         finally:
             context.close()
             browser.close()
+
+    if csv_changed:
+        with csv_path.open("w", newline="", encoding="utf-8") as f:
+            csv.writer(f, lineterminator="\n").writerows([header] + data_rows)
+        logger.info("wrote resolved kingdoms back to %s", csv_path)
 
     logger.info("=== summary ===")
     for code in codes:
@@ -144,8 +213,9 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--csv", default="kingshot_players.csv", help="CSV path")
     parser.add_argument("--code", action="append", default=[], help="Gift code (repeatable)")
-    parser.add_argument("--kingdom", required=True,
-                        help="Kingdom number, applied to every player (now required by the site)")
+    parser.add_argument("--kingdom", action="append", default=[],
+                        help="Candidate kingdom, tried in order for players with no cached "
+                             f"Kingdom in the CSV (repeatable; default {DEFAULT_KINGDOMS})")
     parser.add_argument("--codes-from-scrape", action="store_true",
                         help="Fetch active codes from kingshotguides.com")
     parser.add_argument("--latest", type=int, default=0,
@@ -180,7 +250,7 @@ def main() -> int:
     if not codes:
         parser.error("no codes provided — use --code or --codes-from-scrape")
 
-    return run(Path(args.csv), codes, args.kingdom,
+    return run(Path(args.csv), codes, args.kingdom or DEFAULT_KINGDOMS,
                headless=not args.headed, timeout_ms=args.timeout)
 
 

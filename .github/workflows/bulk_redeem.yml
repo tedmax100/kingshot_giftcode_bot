@@ -15,12 +15,12 @@ on:
         required: false
         default: ""
       kingdom:
-        description: "Kingdom number (defaults to the KINGDOM repo variable)"
+        description: "Comma-separated candidate kingdoms, tried in order (defaults to the KINGDOM repo variable, then the script's own list)"
         required: false
         default: ""
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   redeem:
@@ -54,16 +54,29 @@ jobs:
           CODES: ${{ github.event.inputs.codes }}
           KINGDOM: ${{ github.event.inputs.kingdom || vars.KINGDOM }}
         run: |
-          if [[ -z "$KINGDOM" ]]; then
-            echo "KINGDOM is not set — add a KINGDOM repository variable or pass the input." >&2
-            exit 1
-          fi
+          args=()
+          # Empty KINGDOM is fine: the script falls back to its built-in
+          # candidate list and caches whatever the site accepts per player.
+          for k in $(echo "$KINGDOM" | tr ',' ' '); do
+            args+=(--kingdom "$k")
+          done
           if [[ -n "$CODES" ]]; then
-            args=()
             for c in $(echo "$CODES" | tr ',' ' '); do
               args+=(--code "$c")
             done
-            python bulk_redeem.py --kingdom "$KINGDOM" "${args[@]}"
+            python bulk_redeem.py "${args[@]}"
           else
-            python bulk_redeem.py --kingdom "$KINGDOM" --codes-from-scrape --latest "$LATEST"
+            python bulk_redeem.py "${args[@]}" --codes-from-scrape --latest "$LATEST"
+          fi
+
+      - name: Commit resolved kingdoms
+        run: |
+          if [[ -n "$(git status --porcelain kingshot_players.csv)" ]]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add kingshot_players.csv
+            git commit -m "Cache resolved kingdoms from bulk redeem"
+            git push
+          else
+            echo "No kingdom changes to commit."
           fi
