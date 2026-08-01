@@ -12,8 +12,10 @@ URL = "https://ks-giftcode.centurygame.com/"
 logger = logging.getLogger("kingshot.redeem")
 
 
-def redeem(player_id: str, code: str, headless: bool = True, timeout_ms: int = 15000) -> str:
+def redeem(player_id: str, kingdom: str, code: str,
+           headless: bool = True, timeout_ms: int = 15000) -> str:
     logger.info("player_id=%s", player_id)
+    logger.info("kingdom=%s", kingdom)
     logger.info("gift_code=%s", code)
 
     with sync_playwright() as p:
@@ -25,13 +27,17 @@ def redeem(player_id: str, code: str, headless: bool = True, timeout_ms: int = 1
         try:
             page.goto(URL, wait_until="domcontentloaded")
 
-            page.locator(".roleId_con input").fill(player_id)
-            page.locator(".login_btn").click()
+            # Single-page form: Player ID + Kingdom + code, submitted with one Confirm.
+            page.locator(".roleId_con input[placeholder='Player ID']").fill(player_id)
+            page.locator(".roleId_con input[placeholder='Kingdom']").fill(kingdom)
+            page.locator(".code_con input").first.fill(code)
 
-            # Login resolved when the "Retreat" button (post-login) is rendered.
-            page.get_by_text("Retreat", exact=True).wait_for(state="visible")
-
-            page.locator(".code_con input").fill(code)
+            # Confirm stays .disabled until all three fields are valid.
+            page.wait_for_function(
+                "() => { const b = document.querySelector('.exchange_btn');"
+                " return b && !b.classList.contains('disabled'); }",
+                timeout=timeout_ms,
+            )
             page.locator(".exchange_btn").click()
 
             # Any popup text in the result modal counts as done.
@@ -50,6 +56,7 @@ def redeem(player_id: str, code: str, headless: bool = True, timeout_ms: int = 1
 def main() -> int:
     parser = argparse.ArgumentParser(description="Redeem a Kingshot gift code.")
     parser.add_argument("--player-id", required=True, help="In-game Player ID")
+    parser.add_argument("--kingdom", required=True, help="In-game Kingdom number")
     parser.add_argument("--code", required=True, help="Gift code to redeem")
     parser.add_argument("--headed", action="store_true", help="Show the browser (debug)")
     parser.add_argument("--timeout", type=int, default=15000, help="Per-action timeout in ms")
@@ -62,7 +69,8 @@ def main() -> int:
     )
 
     try:
-        redeem(args.player_id, args.code, headless=not args.headed, timeout_ms=args.timeout)
+        redeem(args.player_id, args.kingdom, args.code,
+               headless=not args.headed, timeout_ms=args.timeout)
     except Exception:
         logger.exception("redeem failed")
         return 1
