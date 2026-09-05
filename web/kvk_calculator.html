@@ -1,0 +1,1278 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KvK 前哨戰積分計算機</title>
+<style>
+:root{
+  --bg:#181410;
+  --surface:#221c15;
+  --surface-2:#2b241b;
+  --line:#3a3122;
+  --ink:#ede3d0;
+  --ink-dim:#b8ab8f;
+  --gold:#c9a24a;
+  --gold-bright:#e4bf6c;
+  --jade:#6b9c85;
+  --danger:#b5573f;
+}
+@media (prefers-color-scheme: light){
+  :root:not([data-theme="dark"]){
+    --bg:#f4efe3;
+    --surface:#fffdf8;
+    --surface-2:#ece3cd;
+    --line:#d8cba7;
+    --ink:#2a2318;
+    --ink-dim:#6b5f47;
+    --gold:#9c7a26;
+    --gold-bright:#7d6118;
+    --jade:#3f7a5e;
+    --danger:#a1442d;
+  }
+}
+:root[data-theme="light"]{
+  --bg:#f4efe3;
+  --surface:#fffdf8;
+  --surface-2:#ece3cd;
+  --line:#d8cba7;
+  --ink:#2a2318;
+  --ink-dim:#6b5f47;
+  --gold:#9c7a26;
+  --gold-bright:#7d6118;
+  --jade:#3f7a5e;
+  --danger:#a1442d;
+}
+:root[data-theme="dark"]{
+  --bg:#181410;
+  --surface:#221c15;
+  --surface-2:#2b241b;
+  --line:#3a3122;
+  --ink:#ede3d0;
+  --ink-dim:#b8ab8f;
+  --gold:#c9a24a;
+  --gold-bright:#e4bf6c;
+  --jade:#6b9c85;
+  --danger:#b5573f;
+}
+
+*{box-sizing:border-box;}
+body{
+  margin:0;
+  background:var(--bg);
+  color:var(--ink);
+  font-family:"Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif;
+  -webkit-font-smoothing:antialiased;
+}
+.wrap{
+  max-width:920px;
+  margin:0 auto;
+  padding:32px 20px 80px;
+}
+header{
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+  margin-bottom:20px;
+  border-bottom:1px solid var(--line);
+  padding-bottom:20px;
+}
+.eyebrow{
+  font-family:"Cinzel",serif;
+  font-size:12px;
+  letter-spacing:.18em;
+  text-transform:uppercase;
+  color:var(--gold);
+}
+h1{
+  font-family:"Cinzel",serif;
+  font-weight:600;
+  font-size:clamp(26px,4vw,36px);
+  margin:0;
+  text-wrap:balance;
+  letter-spacing:.01em;
+}
+.sub{
+  color:var(--ink-dim);
+  font-size:14px;
+  max-width:64ch;
+  line-height:1.6;
+}
+
+.tabs{
+  display:flex;
+  gap:6px;
+  overflow-x:auto;
+  margin-bottom:22px;
+  padding-bottom:2px;
+}
+.tab{
+  flex:0 0 auto;
+  font-family:"Cinzel",serif;
+  font-size:13px;
+  letter-spacing:.05em;
+  color:var(--ink-dim);
+  background:var(--surface);
+  border:1px solid var(--line);
+  border-radius:8px;
+  padding:9px 16px;
+  cursor:pointer;
+}
+.tab:hover{color:var(--ink);border-color:var(--gold);}
+.tab[aria-selected="true"]{
+  color:var(--bg);
+  background:var(--gold);
+  border-color:var(--gold);
+}
+.tab:focus-visible{outline:2px solid var(--gold);outline-offset:2px;}
+
+.day-note{
+  font-size:13px;
+  color:var(--ink-dim);
+  line-height:1.6;
+  margin:0 0 20px;
+  max-width:66ch;
+  border-left:2px solid var(--gold);
+  padding-left:12px;
+}
+
+.identity{
+  background:var(--surface);
+  border:1px solid var(--line);
+  border-radius:10px;
+  padding:18px;
+  margin-bottom:20px;
+}
+.identity-grid{
+  display:grid;
+  grid-template-columns:1fr;
+  gap:14px;
+  margin-top:14px;
+}
+@media(min-width:700px){
+  .identity-grid{grid-template-columns:1fr 1fr 1.2fr;}
+}
+.field{
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+  position:relative;
+}
+.field label{
+  font-size:12px;
+  color:var(--ink-dim);
+  letter-spacing:.03em;
+}
+.field input{
+  background:var(--bg);
+  border:1px solid var(--line);
+  border-radius:6px;
+  color:var(--ink);
+  font-family:"JetBrains Mono",monospace;
+  font-size:14px;
+  padding:9px 10px;
+}
+.field input:focus{outline:none;border-color:var(--gold);}
+.field input:focus-visible{outline:2px solid var(--gold);outline-offset:1px;}
+.field input[readonly]{
+  color:var(--jade);
+  border-color:var(--jade);
+  background:var(--surface-2);
+}
+.id-matches{
+  position:absolute;
+  top:100%;
+  left:0;
+  right:0;
+  margin-top:4px;
+  background:var(--surface);
+  border:1px solid var(--gold);
+  border-radius:8px;
+  overflow:hidden;
+  z-index:5;
+  max-height:220px;
+  overflow-y:auto;
+}
+.id-match{
+  display:flex;
+  justify-content:space-between;
+  gap:10px;
+  padding:8px 12px;
+  font-size:13px;
+  cursor:pointer;
+  border-bottom:1px solid var(--line);
+}
+.id-match:last-child{border-bottom:none;}
+.id-match:hover{background:var(--surface-2);}
+.id-match b{color:var(--gold-bright);font-family:"JetBrains Mono",monospace;}
+.id-match span{color:var(--ink-dim);font-size:12px;}
+.guild-chips{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+  align-items:center;
+}
+.guild-chip{
+  font-size:13px;
+  background:var(--bg);
+  border:1px solid var(--line);
+  color:var(--ink-dim);
+  border-radius:999px;
+  padding:7px 14px;
+  cursor:pointer;
+}
+.guild-chip:hover{border-color:var(--gold);color:var(--ink);}
+.guild-chip[aria-pressed="true"]{
+  background:var(--gold);
+  border-color:var(--gold);
+  color:var(--bg);
+  font-weight:600;
+}
+.guild-chip:focus-visible{outline:2px solid var(--gold);outline-offset:1px;}
+.guild-add-input{
+  width:110px;
+  background:var(--bg);
+  border:1px dashed var(--line);
+  border-radius:999px;
+  color:var(--ink);
+  font-size:13px;
+  padding:6px 12px;
+}
+.guild-add-input:focus{outline:none;border-color:var(--gold);}
+.identity-status{
+  margin:12px 0 0;
+  font-size:13px;
+  color:var(--jade);
+  min-height:1.4em;
+}
+.identity-status.is-empty{color:var(--ink-dim);}
+
+.round-banner{
+  display:none;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  flex-wrap:wrap;
+  background:var(--surface);
+  border:1px solid var(--gold);
+  border-radius:10px;
+  padding:12px 16px;
+  margin-bottom:20px;
+  font-size:13px;
+}
+.round-banner.is-visible{display:flex;}
+.round-banner.is-closed{border-color:var(--danger);}
+.round-banner-text{color:var(--ink-dim);}
+.round-banner-text b{color:var(--gold-bright);}
+.submit-row{
+  display:flex;
+  align-items:center;
+  gap:12px;
+  flex-wrap:wrap;
+  margin-top:14px;
+  padding-top:14px;
+  border-top:1px solid var(--line);
+}
+.submit-btn{
+  font-family:"Cinzel",serif;
+  font-size:13px;
+  letter-spacing:.05em;
+  background:var(--gold);
+  border:1px solid var(--gold);
+  color:var(--bg);
+  border-radius:8px;
+  padding:10px 20px;
+  cursor:pointer;
+  font-weight:600;
+}
+.submit-btn:hover{background:var(--gold-bright);border-color:var(--gold-bright);}
+.submit-btn:disabled{opacity:.5;cursor:not-allowed;}
+.submit-btn:focus-visible{outline:2px solid var(--gold);outline-offset:2px;}
+.submit-status{
+  font-size:13px;
+  color:var(--jade);
+}
+.submit-status.is-error{color:var(--danger);}
+
+.avail{
+  background:var(--surface);
+  border:1px solid var(--line);
+  border-radius:10px;
+  padding:18px;
+  margin-bottom:24px;
+}
+.avail-head{
+  display:flex;
+  align-items:baseline;
+  justify-content:space-between;
+  gap:12px;
+  flex-wrap:wrap;
+}
+.avail-title{
+  font-family:"Cinzel",serif;
+  font-size:15px;
+  letter-spacing:.03em;
+  color:var(--gold-bright);
+}
+.avail-count{
+  font-family:"JetBrains Mono",monospace;
+  font-variant-numeric:tabular-nums;
+  font-size:13px;
+  color:var(--jade);
+}
+.avail-hint{
+  color:var(--ink-dim);
+  font-size:13px;
+  line-height:1.6;
+  margin:6px 0 14px;
+  max-width:66ch;
+}
+.avail-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(72px,1fr));
+  gap:6px;
+  margin-bottom:14px;
+}
+.slot{
+  font-family:"JetBrains Mono",monospace;
+  font-variant-numeric:tabular-nums;
+  font-size:12.5px;
+  background:var(--bg);
+  border:1px solid var(--line);
+  color:var(--ink-dim);
+  border-radius:6px;
+  padding:8px 4px;
+  text-align:center;
+  cursor:pointer;
+}
+.slot:hover{border-color:var(--gold);color:var(--ink);}
+.slot[aria-pressed="true"]{
+  background:var(--jade);
+  border-color:var(--jade);
+  color:var(--bg);
+  font-weight:600;
+}
+.slot.slot-daybreak{border-left:2px solid var(--gold);}
+.slot:focus-visible{outline:2px solid var(--gold);outline-offset:1px;}
+
+.layout{
+  display:grid;
+  grid-template-columns:1fr;
+  gap:24px;
+}
+@media(min-width:760px){
+  .layout{grid-template-columns:1fr 300px;align-items:start;}
+}
+
+.groups{display:flex;flex-direction:column;gap:16px;}
+
+.group{
+  background:var(--surface);
+  border:1px solid var(--line);
+  border-radius:10px;
+  overflow:hidden;
+}
+.group-head{
+  display:flex;
+  align-items:baseline;
+  justify-content:space-between;
+  padding:14px 18px;
+  background:var(--surface-2);
+  border-bottom:1px solid var(--line);
+}
+.group-title{
+  font-family:"Cinzel",serif;
+  font-size:15px;
+  letter-spacing:.03em;
+  color:var(--gold-bright);
+}
+.group-subtotal{
+  font-family:"JetBrains Mono",monospace;
+  font-variant-numeric:tabular-nums;
+  font-size:13px;
+  color:var(--ink-dim);
+}
+.group-subtotal b{color:var(--jade);font-weight:600;}
+
+.rows{
+  display:flex;
+  flex-direction:column;
+}
+.row{
+  display:grid;
+  grid-template-columns:1fr 96px 96px;
+  gap:10px;
+  align-items:center;
+  padding:11px 18px;
+  border-bottom:1px solid var(--line);
+}
+.row:last-child{border-bottom:none;}
+.row-label{font-size:14px;line-height:1.4;}
+.row-label small{display:block;color:var(--ink-dim);font-size:11px;margin-top:2px;}
+.row-rate{
+  font-family:"JetBrains Mono",monospace;
+  font-size:12px;
+  color:var(--ink-dim);
+  text-align:right;
+  white-space:nowrap;
+}
+.row input{
+  width:100%;
+  background:var(--bg);
+  border:1px solid var(--line);
+  border-radius:6px;
+  color:var(--ink);
+  font-family:"JetBrains Mono",monospace;
+  font-variant-numeric:tabular-nums;
+  font-size:14px;
+  padding:7px 8px;
+  text-align:right;
+}
+.row input:focus{
+  outline:none;
+  border-color:var(--gold);
+}
+.row input:focus-visible{outline:2px solid var(--gold);outline-offset:1px;}
+.row input::-webkit-outer-spin-button,
+.row input::-webkit-inner-spin-button{
+  -webkit-appearance:none;margin:0;
+}
+
+.row-duration{
+  grid-template-columns:1fr auto;
+}
+.duration-inputs{
+  display:flex;
+  gap:8px;
+}
+.duration-inputs label{
+  display:flex;
+  align-items:center;
+  gap:5px;
+  font-size:12px;
+  color:var(--ink-dim);
+}
+.duration-inputs input{
+  width:56px;
+  background:var(--bg);
+  border:1px solid var(--line);
+  border-radius:6px;
+  color:var(--ink);
+  font-family:"JetBrains Mono",monospace;
+  font-variant-numeric:tabular-nums;
+  font-size:14px;
+  padding:7px 6px;
+  text-align:right;
+}
+.duration-inputs input:focus{outline:none;border-color:var(--gold);}
+.duration-inputs input:focus-visible{outline:2px solid var(--gold);outline-offset:1px;}
+.duration-inputs input::-webkit-outer-spin-button,
+.duration-inputs input::-webkit-inner-spin-button{
+  -webkit-appearance:none;margin:0;
+}
+
+/* summary panel */
+.summary{
+  position:sticky;
+  top:20px;
+  background:var(--surface);
+  border:1px solid var(--gold);
+  border-radius:10px;
+  padding:20px;
+  display:flex;
+  flex-direction:column;
+  gap:14px;
+}
+.summary-label{
+  font-family:"Cinzel",serif;
+  font-size:12px;
+  letter-spacing:.16em;
+  text-transform:uppercase;
+  color:var(--gold);
+}
+.summary-total{
+  font-family:"JetBrains Mono",monospace;
+  font-variant-numeric:tabular-nums;
+  font-size:clamp(30px,6vw,40px);
+  font-weight:700;
+  color:var(--gold-bright);
+  line-height:1;
+  text-wrap:balance;
+}
+.summary-total span{font-size:15px;color:var(--ink-dim);font-weight:400;margin-left:6px;}
+.summary-list{
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+  font-size:13px;
+  border-top:1px solid var(--line);
+  padding-top:12px;
+}
+.summary-list .li{
+  display:flex;
+  justify-content:space-between;
+  color:var(--ink-dim);
+}
+.summary-list .li b{
+  font-family:"JetBrains Mono",monospace;
+  font-variant-numeric:tabular-nums;
+  color:var(--ink);
+  font-weight:500;
+}
+.reset-btn{
+  margin-top:4px;
+  background:transparent;
+  border:1px solid var(--line);
+  color:var(--ink-dim);
+  border-radius:6px;
+  padding:8px 10px;
+  font-size:12px;
+  cursor:pointer;
+  font-family:inherit;
+}
+.reset-btn:hover{border-color:var(--danger);color:var(--danger);}
+.reset-btn:focus-visible{outline:2px solid var(--gold);outline-offset:1px;}
+
+footer{
+  margin-top:28px;
+  color:var(--ink-dim);
+  font-size:12px;
+  line-height:1.7;
+  border-top:1px solid var(--line);
+  padding-top:16px;
+}
+</style>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600&family=Noto+Sans+TC:wght@400;500;700&family=JetBrains+Mono:wght@400;600&display=swap">
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Kingshot · KvK 前哨戰</div>
+    <h1>王城戰前哨積分計算機</h1>
+    <p class="sub">選擇天數，輸入你打算投入的材料數量與加速時間，即時換算前哨戰積分。每天的高效項目不同，投入前先確認狼隊、加速、首相三重 Buff 都已生效。</p>
+  </header>
+
+  <div class="round-banner" id="roundBanner">
+    <span class="round-banner-text" id="roundBannerText"></span>
+  </div>
+
+  <section class="identity">
+    <div class="avail-head">
+      <span class="avail-title">回報者資訊</span>
+    </div>
+    <div class="identity-grid">
+      <div class="field">
+        <label for="playerId">角色 ID</label>
+        <input type="text" id="playerId" inputmode="numeric" autocomplete="off" placeholder="輸入至少 3 碼開始搜尋">
+        <div class="id-matches" id="idMatches" hidden></div>
+      </div>
+      <div class="field">
+        <label for="playerName">玩家名稱</label>
+        <input type="text" id="playerName" autocomplete="off" placeholder="找不到 ID 時請手動輸入">
+      </div>
+      <div class="field">
+        <label>聯盟名稱</label>
+        <div class="guild-chips" id="guildChips"></div>
+      </div>
+    </div>
+    <p class="identity-status" id="identityStatus"></p>
+    <p class="avail-hint">名單為 kingshot_players.csv 的靜態快照，更新名單後需重新產生此頁面才會生效。</p>
+    <div class="submit-row" id="submitRow" hidden>
+      <button class="submit-btn" id="submitBtn" type="button">送出登記</button>
+      <span class="submit-status" id="submitStatus"></span>
+    </div>
+  </section>
+
+  <div class="tabs" id="tabs" role="tablist"></div>
+  <p class="day-note" id="dayNote"></p>
+
+  <section class="avail">
+    <div class="avail-head">
+      <span class="avail-title">有空時段（GMT+8 台北時間）</span>
+      <span class="avail-count" id="availCount">已選 0 段</span>
+    </div>
+    <p class="avail-hint">從當天早上 08:00 到隔天早上 08:00，每 30 分鐘一格，點選你這天有空上線參與活動的時段（可複選）。</p>
+    <div class="avail-grid" id="availGrid"></div>
+    <button class="reset-btn" id="availResetBtn" type="button">清空本日時段</button>
+  </section>
+
+  <div class="layout">
+    <div class="groups" id="groups"></div>
+
+    <div class="summary">
+      <div class="summary-label">預估總積分</div>
+      <div class="summary-total" id="grandTotal">0<span>分</span></div>
+      <div class="summary-list" id="breakdown"></div>
+      <button class="reset-btn" id="resetBtn" type="button">清空本日輸入</button>
+    </div>
+  </div>
+
+  <footer id="footerNote"></footer>
+</div>
+
+<script>
+// ---- 玩家名單（來自 kingshot_players.csv，靜態快照）----
+const PLAYERS_CSV = `143080583,叮叮蛋,1034
+157894566,派大星公爵的農奴,1000
+165310181,silkysmooth,1000
+198461128,小默默,1034
+197136827,求通過@@,1000
+170148051,FiFi,1000
+143621739,Sophie蘇菲,1034
+143998435,Miaoshuang,1034
+146734784,BoyLechon,1000
+145456138,SSE,1034
+146553933,ABai雷,1034
+143998820,一隻貓A cat,1034
+143572011,Chamuel,1034
+144866643,Ellie愛唱歌,1034
+145178451,～有夠無聊～,1034
+146292258,企鵝妹妹代玩中,1034
+143916799,Curry咖哩,1034
+144947913,派大星Patrickᵀᵂᴺ,1034
+145587335,墨·默默 Morr,1034
+148557325,Asteria,1000
+114178818,SSD,
+143195298,尽情的打我,1000
+143015237,猫JJ,1034
+203037623,BarryQQ,1034
+207801779,企鵝哥哥旅行中,1034
+146291934,Anshirana8456&,1000
+146472552,Power 炮,1034
+145111955,Dylan,1000
+223130417,Stitch,1000
+144047482,勻小妹愛唱歌,1000
+144534868,༺༒南無觀世ᴵᴺᴾᵁᵀ薩༒༻,1034
+137126118,Ling,1034
+138457778,ʚ 立华奏 ɞ,1034
+142769014,Vincent文森,1034
+141627495,༺༒OMG༒༻,1034
+245293527,HsinHsin,1034
+142753783,冷氣職人,1034
+195112986,GBai雷,1034
+190263560,冷氣學徒,1000
+249200699,炸彈超人,1034
+253842612,A blt bored,1034
+251468245,Baby小猫仔,1034
+142448359,ฅʕ·ᴥ·ʔฅ～Astrid,1034
+318657433,ターボばあちゃん,1000
+195050932,Jophiel,1034
+128085746,༺ཌ棠太宗࿙ᵀ༒ᵂ࿚Tangད༻,1034
+126791969,東海貝,1034
+327447217,ʚ壹號機ɞ,1000
+328479408,ʚ貳號機ɞ,1000
+330592947,Crusader,1000
+329740978,ʚ肆號機ɞ,1000
+327578288,ʚ伍號機ɞ,1000
+138499812,杨_Khianz,1034
+142415427,Killualdi,1034
+142513870,Lannn,1034
+149340598,先讓我戒酒10分鐘ᵀᵂᴺ,1034
+142038648,飄飄飄,1034
+154584747,飛翔遨遊,1034
+306825354,外婆的澎湖灣,1034
+151340449,༺༒神大叔༒༻,1034
+101960710,༺ཌༀൢ棠ᵀ༒ᵂTangༀད༻,1034
+339948686,༻伍號機༒五ʳᵒᵃᵈ財神༺,1034
+340571275,༻肆號機༒Food正神༺,1034
+342799503,༻參號機༒張ᶠᵃᵗ༺,1034
+341669002,༻貳號機༒關ʸᵒᵘ༺,1034
+343127183,༻壹號機༒劉ᴮᵉᵃʳ༺,1034
+335810529,lord335810529,
+335819529,babyABai,1034
+353002749,Aria,
+270613057,上帝耶和ᵂᴴᴬᵀ耶穌基ᴰᴼ,1034
+338667826,小沙彌,1034
+146337444,Flora,1034
+166966467,,1034
+146569768,,1034
+349603449,,1034
+349627967,,1034
+352298557,,1034
+351364479,,1034
+352249210,,1034
+349364160,,1034
+145374448,Momo,1034
+159302027,Monica,1034
+364208320,平身,1034
+158241693,[HxH]Teacher Leo 里歐,1034
+156608996,[HxH]Lord KenMuay,1034
+155593323,[SSR]Ning 甯,1034
+157963578,[HxH]玖蘭樞,1034
+158291029,[SSR]RouRou,1034
+156160809,[SSR]夢Ray幻,1034
+222242710,[K28]lord222242710,1034
+155675434,[HxH]蕾雷雅特森,1034
+157684490,[SSR]可愛熊,1034
+382902213,[HxH]為什麼最迷人的最危險,1034
+157953072,[HxH]轉身遇到鬼,1034
+188873983,[HxH]蝴蝶君,1034
+157537439,[HxH]KA48,1034
+154912243,[HxH]ᴢᴀᴄᴋ༗,1034
+152061345,[NuB]Peter WSF,1034
+143446244,[NuB]Kent liou,1034
+147204108,大飛FIY菇
+150284663,[NuB]大飛Ice冰⓿ω⓿,1034
+127414123,[NuB]爱 果,1034
+167955788,[HxH]錢雨CLOO,1034
+177455742,[NuB]Tokito霞之呼吸,1034
+149426708,[HxH]八百米深蓝,1034
+148148747,[HxH]黑糖領主,1034
+143634018,[NuB]不來的比特,1034
+144207849,[NuB]閒雲野鶴,1034
+143163191,[REV]Ckenny,1000
+173343493,[NuB]五條悟,1034
+275252726,聖母,OMG小號,1034`;
+
+const PLAYERS = PLAYERS_CSV.split("\n").map(line => {
+  const fields = line.split(",");
+  const id = fields[0];
+  let name, kingdom;
+  if (fields.length <= 3) {
+    name = fields[1] || "";
+    kingdom = fields[2] || "";
+  } else {
+    kingdom = fields[fields.length - 1];
+    name = fields.slice(1, -1).join(",");
+  }
+  return { id, name, kingdom };
+});
+
+// ---- 回報者資訊：角色 ID / 玩家名稱 / 聯盟 ----
+const playerIdInput = document.getElementById("playerId");
+const playerNameInput = document.getElementById("playerName");
+const idMatchesEl = document.getElementById("idMatches");
+const identityStatusEl = document.getElementById("identityStatus");
+const guildChipsEl = document.getElementById("guildChips");
+
+function setIdentityStatus(text, empty) {
+  identityStatusEl.textContent = text;
+  identityStatusEl.classList.toggle("is-empty", !!empty);
+}
+
+playerIdInput.addEventListener("input", () => {
+  const query = playerIdInput.value.trim();
+  playerNameInput.readOnly = false;
+
+  if (query.length < 3) {
+    idMatchesEl.hidden = true;
+    idMatchesEl.innerHTML = "";
+    setIdentityStatus("輸入至少 3 碼角色 ID 開始搜尋名單。", true);
+    return;
+  }
+
+  const matches = PLAYERS.filter(p => p.id.includes(query)).slice(0, 8);
+
+  if (matches.length === 0) {
+    idMatchesEl.hidden = true;
+    idMatchesEl.innerHTML = "";
+    setIdentityStatus("名單中找不到符合的角色 ID，請自行輸入玩家名稱。");
+    return;
+  }
+
+  idMatchesEl.hidden = false;
+  idMatchesEl.innerHTML = "";
+  matches.forEach(p => {
+    const row = document.createElement("div");
+    row.className = "id-match";
+    row.innerHTML = `<b>${p.id}</b><span>${p.name || "（無名稱）"}${p.kingdom ? " · 王國 " + p.kingdom : ""}</span>`;
+    row.addEventListener("click", () => {
+      playerIdInput.value = p.id;
+      playerNameInput.value = p.name || "";
+      playerNameInput.readOnly = !!p.name;
+      idMatchesEl.hidden = true;
+      setIdentityStatus(p.name ? "已從名單帶入玩家名稱。" : "名單中此 ID 沒有名稱，請自行輸入。");
+    });
+    idMatchesEl.appendChild(row);
+  });
+
+  const exact = PLAYERS.find(p => p.id === query);
+  if (exact) {
+    playerNameInput.value = exact.name || "";
+    playerNameInput.readOnly = !!exact.name;
+    idMatchesEl.hidden = true;
+    setIdentityStatus(exact.name ? "已從名單帶入玩家名稱。" : "名單中此 ID 沒有名稱，請自行輸入。");
+  } else {
+    setIdentityStatus(matches.length + " 筆相符，請從下方清單點選。", false);
+  }
+});
+
+document.addEventListener("click", (e) => {
+  if (!e.target.closest(".field")) idMatchesEl.hidden = true;
+});
+
+// 聯盟選擇（預設 NuB / HxH，不分大小寫比對，可自訂新增）
+const GUILD_STORAGE_KEY = "kvk_guild_list";
+const GUILD_SELECTED_KEY = "kvk_guild_selected";
+let guildList = ["NuB", "HxH"];
+try {
+  const saved = JSON.parse(localStorage.getItem(GUILD_STORAGE_KEY) || "null");
+  if (Array.isArray(saved) && saved.length) guildList = saved;
+} catch {}
+let selectedGuild = null;
+try { selectedGuild = localStorage.getItem(GUILD_SELECTED_KEY) || null; } catch {}
+
+function saveGuildList() {
+  try { localStorage.setItem(GUILD_STORAGE_KEY, JSON.stringify(guildList)); } catch {}
+}
+function saveSelectedGuild() {
+  try { localStorage.setItem(GUILD_SELECTED_KEY, selectedGuild || ""); } catch {}
+}
+
+function renderGuildChips() {
+  guildChipsEl.innerHTML = "";
+  guildList.forEach(guild => {
+    const chip = document.createElement("button");
+    chip.type = "button";
+    chip.className = "guild-chip";
+    chip.textContent = guild;
+    const isSelected = selectedGuild && selectedGuild.toLowerCase() === guild.toLowerCase();
+    chip.setAttribute("aria-pressed", isSelected ? "true" : "false");
+    chip.addEventListener("click", () => {
+      selectedGuild = isSelected ? null : guild;
+      saveSelectedGuild();
+      renderGuildChips();
+    });
+    guildChipsEl.appendChild(chip);
+  });
+
+  const addBtn = document.createElement("button");
+  addBtn.type = "button";
+  addBtn.className = "guild-chip";
+  addBtn.textContent = "+ 新增聯盟";
+  addBtn.addEventListener("click", () => {
+    const input = document.createElement("input");
+    input.type = "text";
+    input.className = "guild-add-input";
+    input.placeholder = "輸入聯盟名稱";
+    addBtn.replaceWith(input);
+    input.focus();
+    const commit = () => {
+      const val = input.value.trim();
+      if (val && !guildList.some(g => g.toLowerCase() === val.toLowerCase())) {
+        guildList.push(val);
+        saveGuildList();
+        selectedGuild = val;
+        saveSelectedGuild();
+      }
+      renderGuildChips();
+    };
+    input.addEventListener("keydown", (e) => { if (e.key === "Enter") commit(); if (e.key === "Escape") renderGuildChips(); });
+    input.addEventListener("blur", commit);
+  });
+  guildChipsEl.appendChild(addBtn);
+}
+
+renderGuildChips();
+setIdentityStatus("輸入至少 3 碼角色 ID 開始搜尋名單。", true);
+
+const DAYS = [
+  {
+    id: "day1",
+    label: "Day 1",
+    note: "重點在真金升級——別忘了先吃狼隊、加速、首相三重 Buff。",
+    source: "真金 2,000 分／淬鍊真金 30,000 分／建造加速每分鐘 30 分。",
+    groups: [
+      {
+        title: "真金建設 / 科技",
+        items: [
+          { label: "使用真金（建築升級）", rate: 2000, unit: "個", key: "d1_truegold" },
+          { label: "使用淬鍊真金（建築升級）", rate: 30000, unit: "個", key: "d1_temperedTruegold" }
+        ]
+      },
+      {
+        title: "加速道具（分鐘）",
+        items: [
+          { label: "建造加速", rate: 30, unit: "分鐘", key: "d1_constructionSpeedup" }
+        ]
+      }
+    ]
+  },
+  {
+    id: "day2",
+    label: "Day 2",
+    note: "真金石粉與科技加速是這天的重點。",
+    source: "真金石粉 1,000 分／科技加速每分鐘 30 分。",
+    groups: [
+      {
+        title: "真金建設 / 科技",
+        items: [
+          { label: "使用真金石粉（科技研究）", rate: 1000, unit: "個", key: "d2_truegoldDust" }
+        ]
+      },
+      {
+        title: "加速道具（分鐘）",
+        items: [
+          { label: "科技加速", rate: 30, unit: "分鐘", key: "d2_researchSpeedup" }
+        ]
+      }
+    ]
+  },
+  {
+    id: "day4",
+    label: "Day 4",
+    note: "這天以練兵加速道具為主力，每 1 分鐘加速可換 90 積分，換算成日／時／分輸入即可。",
+    source: "練兵加速道具每分鐘 90 分。",
+    groups: [
+      {
+        title: "練兵加速",
+        items: [
+          { label: "練兵加速道具", rate: 90, unit: "分鐘", key: "d4_trainingSpeedup", type: "duration" }
+        ]
+      }
+    ]
+  }
+];
+
+const tabsEl = document.getElementById("tabs");
+const groupsEl = document.getElementById("groups");
+const dayNoteEl = document.getElementById("dayNote");
+const footerEl = document.getElementById("footerNote");
+const values = {};
+
+DAYS.forEach(day => {
+  const tab = document.createElement("button");
+  tab.className = "tab";
+  tab.type = "button";
+  tab.role = "tab";
+  tab.textContent = day.label;
+  tab.dataset.day = day.id;
+  tab.addEventListener("click", () => selectDay(day.id));
+  tabsEl.appendChild(tab);
+});
+
+function renderDay(day) {
+  groupsEl.innerHTML = "";
+  dayNoteEl.textContent = day.note;
+  footerEl.textContent = "資料來源：Kingshot KvK 官方 " + day.label + " 積分規則（" + day.source + "）此工具僅供估算，實際活動積分請以遊戲內公告為準。";
+
+  day.groups.forEach(group => {
+    const groupEl = document.createElement("div");
+    groupEl.className = "group";
+
+    const head = document.createElement("div");
+    head.className = "group-head";
+    head.innerHTML = `<span class="group-title">${group.title}</span><span class="group-subtotal" data-group="${group.title}">小計 <b>0</b> 分</span>`;
+    groupEl.appendChild(head);
+
+    const rows = document.createElement("div");
+    rows.className = "rows";
+
+    group.items.forEach(item => {
+      if (!(item.key in values)) values[item.key] = 0;
+      const row = document.createElement("div");
+
+      if (item.type === "duration") {
+        row.className = "row row-duration";
+        row.innerHTML = `
+          <div class="row-label">${item.label}<small>${item.rate.toLocaleString()} 分/分鐘</small></div>
+          <div class="duration-inputs">
+            <label><input type="number" min="0" step="1" inputmode="numeric" placeholder="0" data-durkey="${item.key}" data-unit="d" data-rate="${item.rate}" aria-label="${item.label}（日）">日</label>
+            <label><input type="number" min="0" step="1" inputmode="numeric" placeholder="0" data-durkey="${item.key}" data-unit="h" data-rate="${item.rate}" aria-label="${item.label}（時）">時</label>
+            <label><input type="number" min="0" step="1" inputmode="numeric" placeholder="0" data-durkey="${item.key}" data-unit="m" data-rate="${item.rate}" aria-label="${item.label}（分）">分</label>
+          </div>
+        `;
+      } else {
+        row.className = "row";
+        row.innerHTML = `
+          <div class="row-label">${item.label}</div>
+          <div class="row-rate">${item.rate.toLocaleString()} 分/${item.unit}</div>
+          <input type="number" min="0" step="1" inputmode="numeric" placeholder="0" data-key="${item.key}" data-rate="${item.rate}" aria-label="${item.label}">
+        `;
+      }
+      rows.appendChild(row);
+    });
+
+    groupEl.appendChild(rows);
+    groupEl.dataset.title = group.title;
+    groupsEl.appendChild(groupEl);
+  });
+
+  recalc();
+}
+
+let currentDay = DAYS[0];
+
+function selectDay(dayId) {
+  currentDay = DAYS.find(d => d.id === dayId);
+  [...tabsEl.children].forEach(tab => {
+    tab.setAttribute("aria-selected", tab.dataset.day === dayId ? "true" : "false");
+  });
+  renderDay(currentDay);
+  renderAvailability(currentDay);
+}
+
+// ---- 有空時段（GMT+8 台北時間，08:00 ~ 隔天 08:00，每 30 分鐘一格）----
+const SLOTS = (() => {
+  const list = [];
+  let h = 8, m = 0, dayOffset = 0;
+  for (let i = 0; i < 48; i++) {
+    const label = String(h).padStart(2, "0") + ":" + String(m).padStart(2, "0");
+    list.push({ label, dayOffset });
+    m += 30;
+    if (m === 60) { m = 0; h += 1; }
+    if (h === 24) { h = 0; dayOffset = 1; }
+  }
+  return list;
+})();
+
+const availGridEl = document.getElementById("availGrid");
+const availCountEl = document.getElementById("availCount");
+const availResetBtn = document.getElementById("availResetBtn");
+
+function availStorageKey(dayId) {
+  return "kvk_avail_" + dayId;
+}
+
+function loadAvailability(dayId) {
+  try {
+    const raw = localStorage.getItem(availStorageKey(dayId));
+    return raw ? new Set(JSON.parse(raw)) : new Set();
+  } catch {
+    return new Set();
+  }
+}
+
+function saveAvailability(dayId, set) {
+  try {
+    localStorage.setItem(availStorageKey(dayId), JSON.stringify([...set]));
+  } catch {}
+}
+
+function renderAvailability(day) {
+  const selected = loadAvailability(day.id);
+  availGridEl.innerHTML = "";
+
+  SLOTS.forEach((slot, idx) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "slot" + (slot.dayOffset === 1 && SLOTS[idx - 1] && SLOTS[idx - 1].dayOffset === 0 ? " slot-daybreak" : "");
+    btn.textContent = slot.label + (slot.dayOffset === 1 ? "+1" : "");
+    btn.setAttribute("aria-pressed", selected.has(idx) ? "true" : "false");
+    btn.setAttribute("aria-label", (slot.dayOffset === 1 ? "隔天 " : "當天 ") + slot.label);
+    btn.addEventListener("click", () => {
+      if (selected.has(idx)) selected.delete(idx); else selected.add(idx);
+      btn.setAttribute("aria-pressed", selected.has(idx) ? "true" : "false");
+      saveAvailability(day.id, selected);
+      updateAvailCount(selected);
+    });
+    availGridEl.appendChild(btn);
+  });
+
+  updateAvailCount(selected);
+}
+
+function updateAvailCount(selected) {
+  availCountEl.textContent = "已選 " + selected.size + " 段";
+}
+
+availResetBtn.addEventListener("click", () => {
+  saveAvailability(currentDay.id, new Set());
+  renderAvailability(currentDay);
+});
+
+function recalc() {
+  let grand = 0;
+  const perGroup = {};
+  currentDay.groups.forEach(group => { perGroup[group.title] = 0; });
+
+  document.querySelectorAll("input[data-key]").forEach(input => {
+    const val = Math.max(0, parseFloat(input.value) || 0);
+    const rate = parseFloat(input.dataset.rate);
+    values[input.dataset.key] = val * rate;
+  });
+
+  const durationMinutes = {};
+  document.querySelectorAll("input[data-durkey]").forEach(input => {
+    const val = Math.max(0, parseFloat(input.value) || 0);
+    const key = input.dataset.durkey;
+    const perMinute = { d: 1440, h: 60, m: 1 }[input.dataset.unit];
+    durationMinutes[key] = (durationMinutes[key] || 0) + val * perMinute;
+  });
+  document.querySelectorAll("input[data-durkey]").forEach(input => {
+    const key = input.dataset.durkey;
+    const rate = parseFloat(input.dataset.rate);
+    values[key] = (durationMinutes[key] || 0) * rate;
+  });
+
+  currentDay.groups.forEach(group => {
+    let sum = 0;
+    group.items.forEach(item => { sum += values[item.key] || 0; });
+    perGroup[group.title] = sum;
+    grand += sum;
+  });
+
+  document.querySelectorAll(".group-subtotal").forEach(el => {
+    const g = el.dataset.group;
+    el.querySelector("b").textContent = Math.round(perGroup[g]).toLocaleString();
+  });
+
+  document.getElementById("grandTotal").innerHTML = Math.round(grand).toLocaleString() + "<span>分</span>";
+
+  const breakdown = document.getElementById("breakdown");
+  breakdown.innerHTML = "";
+  currentDay.groups.forEach(group => {
+    if (perGroup[group.title] > 0) {
+      const li = document.createElement("div");
+      li.className = "li";
+      li.innerHTML = `<span>${group.title}</span><b>${Math.round(perGroup[group.title]).toLocaleString()}</b>`;
+      breakdown.appendChild(li);
+    }
+  });
+}
+
+groupsEl.addEventListener("input", recalc);
+
+document.getElementById("resetBtn").addEventListener("click", () => {
+  document.querySelectorAll("input[data-key]").forEach(input => { input.value = ""; });
+  recalc();
+});
+
+selectDay("day1");
+
+// ---- KvK 前哨戰報名（Worker API，見 web/kvk_prep_design.md）----
+const WORKER_URL = "https://kingshot-csv.tedmax100.workers.dev";
+
+function getRoundFromHash() {
+  const m = location.hash.match(/^#(\d+)$/);
+  return m ? Number(m[1]) : null;
+}
+
+const currentRound = getRoundFromHash();
+const roundBannerEl = document.getElementById("roundBanner");
+const roundBannerTextEl = document.getElementById("roundBannerText");
+const submitRowEl = document.getElementById("submitRow");
+const submitBtnEl = document.getElementById("submitBtn");
+const submitStatusEl = document.getElementById("submitStatus");
+
+let roundInfo = null; // { round, issue, startDate, status, url }
+
+function setSubmitStatus(text, isError) {
+  submitStatusEl.textContent = text || "";
+  submitStatusEl.classList.toggle("is-error", !!isError);
+}
+
+function collectAvailability() {
+  const availability = {};
+  DAYS.forEach(day => {
+    availability[day.id] = [...loadAvailability(day.id)].sort((a, b) => a - b);
+  });
+  return availability;
+}
+
+function applyAvailability(availability) {
+  if (!availability || typeof availability !== "object") return;
+  DAYS.forEach(day => {
+    const arr = Array.isArray(availability[day.id]) ? availability[day.id] : [];
+    saveAvailability(day.id, new Set(arr));
+  });
+  renderAvailability(currentDay);
+}
+
+async function fetchRoundInfo(round) {
+  const r = await fetch(`${WORKER_URL}/api/kvk/rounds/${round}`);
+  if (!r.ok) return null;
+  return r.json();
+}
+
+async function fetchExistingSubmission(round, playerId) {
+  const r = await fetch(`${WORKER_URL}/api/kvk/rounds/${round}/submissions/${encodeURIComponent(playerId)}`);
+  if (!r.ok) return null;
+  return r.json();
+}
+
+function renderRoundBanner() {
+  if (!currentRound) {
+    roundBannerEl.classList.remove("is-visible", "is-closed");
+    submitRowEl.hidden = true;
+    return;
+  }
+  roundBannerEl.classList.add("is-visible");
+  if (!roundInfo) {
+    roundBannerEl.classList.remove("is-closed");
+    roundBannerTextEl.innerHTML = `KvK <b>#${currentRound}</b> 報名頁尚未開放（找不到這一屆，請確認連結或洽詢幹部）。`;
+    submitRowEl.hidden = true;
+    return;
+  }
+  if (roundInfo.status === "closed") {
+    roundBannerEl.classList.add("is-closed");
+    roundBannerTextEl.innerHTML = `KvK <b>#${currentRound}</b> 報名已截止，如需異動請直接聯絡幹部。`;
+    submitRowEl.hidden = true;
+    return;
+  }
+  roundBannerEl.classList.remove("is-closed");
+  roundBannerTextEl.innerHTML = `KvK <b>#${currentRound}</b> 前哨戰報名開放中，填完角色資訊與有空時段後記得按「送出登記」。`;
+  submitRowEl.hidden = false;
+}
+
+async function tryPrefillFromServer() {
+  const playerId = playerIdInput.value.trim();
+  if (!currentRound || !roundInfo || roundInfo.status !== "open" || !playerId) return;
+  try {
+    const sub = await fetchExistingSubmission(currentRound, playerId);
+    if (!sub) return;
+    if (sub.playerName) playerNameInput.value = sub.playerName;
+    if (sub.guild) {
+      selectedGuild = sub.guild;
+      if (!guildList.some(g => g.toLowerCase() === sub.guild.toLowerCase())) guildList.push(sub.guild);
+      saveGuildList();
+      saveSelectedGuild();
+      renderGuildChips();
+    }
+    applyAvailability(sub.availability);
+    const when = sub.submittedAt ? new Date(sub.submittedAt).toLocaleString("zh-TW", { hour12: false }) : "";
+    setSubmitStatus(when ? `已帶入上次登記內容（登記於 ${when}），可直接修改後重新送出。` : "已帶入上次登記內容，可直接修改後重新送出。");
+  } catch {
+    // Lookup failure is non-fatal — leave the form as-is.
+  }
+}
+
+playerIdInput.addEventListener("blur", () => {
+  if (playerIdInput.value.trim().length >= 5) tryPrefillFromServer();
+});
+
+async function submitRegistration() {
+  if (!currentRound || !roundInfo || roundInfo.status !== "open") return;
+  const playerId = playerIdInput.value.trim();
+  const playerName = playerNameInput.value.trim();
+  if (!playerId || !playerName) {
+    setSubmitStatus("請先填寫角色 ID 與玩家名稱。", true);
+    return;
+  }
+  submitBtnEl.disabled = true;
+  setSubmitStatus("送出中…");
+  try {
+    const r = await fetch(`${WORKER_URL}/api/kvk/rounds/${currentRound}/submissions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        playerId,
+        playerName,
+        guild: selectedGuild || "",
+        availability: collectAvailability(),
+      }),
+    });
+    if (!r.ok) throw new Error(await r.text());
+    setSubmitStatus("已登記，若時段有更新可重新送出。");
+  } catch (e) {
+    setSubmitStatus("送出失敗：" + (e.message || e), true);
+  } finally {
+    setTimeout(() => { submitBtnEl.disabled = false; }, 5000);
+  }
+}
+
+submitBtnEl.addEventListener("click", submitRegistration);
+
+if (currentRound) {
+  renderRoundBanner();
+  fetchRoundInfo(currentRound).then(info => {
+    roundInfo = info;
+    renderRoundBanner();
+    if (info && info.status === "open") tryPrefillFromServer();
+  });
+}
+</script>
+</body>
+</html>

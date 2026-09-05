@@ -1,0 +1,24 @@
+name: Close finished KvK prep rounds
+
+on:
+  schedule:
+    # 09:00 Asia/Taipei (UTC+8) == 01:00 UTC
+    - cron: "0 1 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  close:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call Worker close-due endpoint
+        env:
+          KVK_CLOSE_TOKEN: ${{ secrets.KVK_CLOSE_TOKEN }}
+          WORKER_URL: ${{ vars.KVK_WORKER_URL }}
+        run: |
+          if [[ -z "$WORKER_URL" ]]; then
+            echo "Repo variable KVK_WORKER_URL is not set (e.g. https://kingshot-csv.<subdomain>.workers.dev)" >&2
+            exit 1
+          fi
+          curl -fsS -X POST \
+            -H "Authorization: Bearer ${KVK_CLOSE_TOKEN}" \
+            "${WORKER_URL%/}/api/kvk/rounds/close-due"

@@ -8,9 +8,12 @@ GH_OWNER = "tedmax100"
 GH_REPO = "kingshot_giftcode_bot"
 GH_BRANCH = "main"
 CSV_PATH = "kingshot_players.csv"
+KVK_ROUNDS_PATH = "kvk_rounds.json"
 
 # Secrets — set via `npx wrangler secret put <NAME>`:
-#   GITHUB_TOKEN     PAT (fine-grained or classic) with Contents:Read+Write on this repo
+#   GITHUB_TOKEN     PAT (fine-grained or classic) with Contents:Read+Write and Issues:Read+Write on this repo
 #   GOOGLE_CLIENT_ID OAuth Web client ID from Google Cloud Console
 #   ALLOWED_EMAILS   comma-separated allowlist, e.g. "tedmax100@gmail.com"
 #   ALLOWED_ORIGINS  comma-separated, e.g. "https://tedmax100.github.io"
+#   KVK_CLOSE_TOKEN  random static token, called by .github/workflows/kvk_prep_close.yml
+#                    (same value must be set as the repo secret KVK_CLOSE_TOKEN)

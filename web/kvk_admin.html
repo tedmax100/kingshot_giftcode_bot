@@ -1,0 +1,267 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<title>KvK 前哨戰報名管理</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+  :root { color-scheme: light dark; }
+  body { font-family: system-ui, -apple-system, sans-serif; max-width: 960px; margin: 2rem auto; padding: 0 1rem; }
+  h1 { margin-top: 0; }
+  h2 { font-size: 1.1rem; margin: 2rem 0 .5rem; }
+  table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
+  th, td { padding: .5rem; border-bottom: 1px solid #ddd; text-align: left; vertical-align: top; font-size: .9em; }
+  th { background: rgba(0,0,0,.04); }
+  input[type=text], input[type=number], input[type=date] { padding: .4rem; font: inherit; box-sizing: border-box; }
+  .add-form { display: flex; gap: .5rem; margin: 1rem 0; flex-wrap: wrap; align-items: center; }
+  .add-form input { flex: 1 1 8rem; }
+  button { padding: .4rem .9rem; cursor: pointer; font: inherit; }
+  button.primary { background: #1976d2; color: white; border: 0; border-radius: 4px; }
+  button.danger  { background: #d32f2f; color: white; border: 0; border-radius: 4px; }
+  .status { margin: 1rem 0; padding: .5rem .8rem; border-radius: 4px; background: #eef; }
+  .status.err { background: #fee; color: #900; }
+  .status.ok  { background: #efe; color: #060; }
+  .hidden { display: none; }
+  #me { color: #666; }
+  .box { border: 1px solid #ddd; border-radius: 6px; margin: 1rem 0; padding: .5rem 1rem 1rem; }
+  .box legend { padding: 0 .4rem; color: #1976d2; font-weight: 600; }
+  .round-info { color: #666; font-size: .9em; margin: .5rem 0; }
+  .badge { display: inline-block; padding: .1rem .5rem; border-radius: 999px; font-size: .8em; }
+  .badge.open { background: #efe; color: #060; }
+  .badge.closed { background: #fee; color: #900; }
+  .footer { margin-top: 2rem; color: #888; font-size: .85em; }
+</style>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+</head>
+<body>
+<h1>KvK 前哨戰報名管理</h1>
+
+<!-- =====================================================================
+     Fill these two before deploying:
+     - GOOGLE_CLIENT_ID: from Google Cloud Console (OAuth Web client)
+     - WORKER_URL: your deployed Cloudflare Worker URL (no trailing slash)
+     ===================================================================== -->
+<script>
+  window.GOOGLE_CLIENT_ID = "28393022343-te1mhl6gclb02tojo9lafpfbm0g22k1l.apps.googleusercontent.com";
+  window.WORKER_URL       = "https://kingshot-csv.tedmax100.workers.dev";
+</script>
+
+<section id="signin">
+  <p>請先用 Google 登入(僅允許名單內 email):</p>
+  <div id="g_id_onload"
+       data-client_id="28393022343-te1mhl6gclb02tojo9lafpfbm0g22k1l.apps.googleusercontent.com"
+       data-callback="onSignIn"
+       data-auto_prompt="false"></div>
+  <div class="g_id_signin" data-type="standard"></div>
+</section>
+
+<section id="app" class="hidden">
+  <p>已登入:<span id="me"></span> <button onclick="signOut()">登出</button></p>
+  <div id="status" class="status hidden"></div>
+
+  <fieldset class="box">
+    <legend>開新一屆</legend>
+    <div class="add-form">
+      <input id="new-round" type="number" min="1" step="1" placeholder="屆數，例如 13">
+      <input id="new-startdate" type="date">
+      <button class="primary" onclick="createRound()">建立並開 Issue</button>
+    </div>
+    <p class="footer">開始日期填「幹部開始收集登記的那天」，報名會在 startDate + 5 天自動截止（也可以隨時手動結束）。</p>
+  </fieldset>
+
+  <fieldset class="box">
+    <legend>檢視 / 管理一屆</legend>
+    <div class="add-form">
+      <input id="view-round" type="number" min="1" step="1" placeholder="屆數，例如 13">
+      <button class="primary" onclick="loadRound()">載入</button>
+      <button class="danger" onclick="closeRound()">結束本屆</button>
+    </div>
+    <div id="round-info" class="round-info hidden"></div>
+
+    <table id="submissions-table" class="hidden">
+      <thead>
+        <tr>
+          <th>角色 ID</th>
+          <th>玩家名稱</th>
+          <th>聯盟</th>
+          <th>登記時間</th>
+          <th id="avail-head"></th>
+        </tr>
+      </thead>
+      <tbody id="submissions-rows"></tbody>
+    </table>
+  </fieldset>
+
+  <p class="footer">建立一屆後，把報名頁連結 <code>kvk_calculator.html#屆數</code> 發給玩家；玩家送出的登記會即時出現在這裡（需重新按「載入」刷新）。</p>
+</section>
+
+<script>
+let idToken = null;
+
+function onSignIn(resp) {
+  idToken = resp.credential;
+  const p = JSON.parse(atob(resp.credential.split(".")[1].replace(/-/g,"+").replace(/_/g,"/")));
+  document.getElementById("me").textContent = p.email;
+  document.getElementById("signin").classList.add("hidden");
+  document.getElementById("app").classList.remove("hidden");
+}
+
+function signOut() {
+  idToken = null;
+  document.getElementById("signin").classList.remove("hidden");
+  document.getElementById("app").classList.add("hidden");
+}
+
+function setStatus(text, kind = "") {
+  const el = document.getElementById("status");
+  el.textContent = text;
+  el.className = "status " + kind;
+  el.classList.remove("hidden");
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;" }[c]));
+}
+
+// Mirrors worker/src/index.js slotIndexToLabel/slotsToRanges: slot 0 = 08:00
+// same day, 30-minute steps, wrapping past midnight into the next day (+1).
+function slotIndexToLabel(idx) {
+  const totalMin = 8 * 60 + idx * 30;
+  const dayOffset = totalMin >= 24 * 60 ? 1 : 0;
+  const mins = totalMin % (24 * 60);
+  const h = String(Math.floor(mins / 60)).padStart(2, "0");
+  const m = String(mins % 60).padStart(2, "0");
+  return `${h}:${m}${dayOffset ? "+1" : ""}`;
+}
+
+function slotsToRanges(slotIndexes) {
+  if (!Array.isArray(slotIndexes) || slotIndexes.length === 0) return "（未登記）";
+  const sorted = [...new Set(slotIndexes.map(Number))].filter((n) => Number.isInteger(n)).sort((a, b) => a - b);
+  if (sorted.length === 0) return "（未登記）";
+  const ranges = [];
+  let start = sorted[0];
+  let prev = sorted[0];
+  for (let i = 1; i < sorted.length; i++) {
+    if (sorted[i] - prev > 1) {
+      ranges.push([start, prev]);
+      start = sorted[i];
+    }
+    prev = sorted[i];
+  }
+  ranges.push([start, prev]);
+  return ranges.map(([s, e]) => `${slotIndexToLabel(s)}–${slotIndexToLabel(e + 1)}`).join(", ");
+}
+
+const DAY_LABELS = { day1: "Day 1", day2: "Day 2", day3: "Day 3", day4: "Day 4", day5: "Day 5", day6: "Day 6" };
+
+async function createRound() {
+  const round = document.getElementById("new-round").value.trim();
+  const startDate = document.getElementById("new-startdate").value;
+  if (!/^\d+$/.test(round) || !startDate) {
+    setStatus("請填寫屆數（正整數）與開始日期", "err");
+    return;
+  }
+  setStatus("建立中...");
+  try {
+    const r = await fetch(window.WORKER_URL + "/api/kvk/rounds", {
+      method: "POST",
+      headers: { Authorization: "Bearer " + idToken, "Content-Type": "application/json" },
+      body: JSON.stringify({ round: Number(round), startDate }),
+    });
+    if (!r.ok) throw new Error(await r.text());
+    const j = await r.json();
+    document.getElementById("new-round").value = "";
+    document.getElementById("new-startdate").value = "";
+    document.getElementById("view-round").value = j.round;
+    setStatus(`✅ 已建立 KvK #${j.round}（issue #${j.issue}），報名頁：${j.url}`, "ok");
+  } catch (e) {
+    setStatus("建立失敗: " + e.message, "err");
+  }
+}
+
+function renderRoundInfo(info) {
+  const el = document.getElementById("round-info");
+  el.classList.remove("hidden");
+  const badge = info.status === "open"
+    ? `<span class="badge open">開放中</span>`
+    : `<span class="badge closed">已截止</span>`;
+  el.innerHTML = `KvK #${info.round} ${badge} · 開始日期 ${info.startDate} · issue #${info.issue} · <a href="${info.url}" target="_blank" rel="noopener">報名頁連結</a>`;
+}
+
+function renderSubmissions(round, submissions) {
+  const dayIds = new Set();
+  submissions.forEach((s) => Object.keys(s.availability || {}).forEach((d) => dayIds.add(d)));
+  const days = [...dayIds].sort();
+  const dayCols = days.length ? days : ["day1"];
+
+  document.getElementById("avail-head").textContent = dayCols.map((d) => DAY_LABELS[d] || d).join(" / ");
+
+  const tbody = document.getElementById("submissions-rows");
+  tbody.innerHTML = "";
+  if (submissions.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="5">目前還沒有人登記。</td></tr>`;
+  } else {
+    submissions
+      .slice()
+      .sort((a, b) => (a.playerName || "").localeCompare(b.playerName || ""))
+      .forEach((s) => {
+        const tr = document.createElement("tr");
+        const availText = dayCols
+          .map((d) => `${DAY_LABELS[d] || d}：${slotsToRanges((s.availability || {})[d])}`)
+          .join("<br>");
+        const when = s.submittedAt ? new Date(s.submittedAt).toLocaleString("zh-TW", { hour12: false }) : "";
+        tr.innerHTML = `
+          <td>${escapeHtml(s.playerId)}</td>
+          <td>${escapeHtml(s.playerName || "")}</td>
+          <td>${escapeHtml(s.guild || "")}</td>
+          <td>${escapeHtml(when)}</td>
+          <td>${availText}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+  }
+  document.getElementById("submissions-table").classList.remove("hidden");
+}
+
+async function loadRound() {
+  const round = document.getElementById("view-round").value.trim();
+  if (!/^\d+$/.test(round)) { setStatus("請輸入屆數（正整數）", "err"); return; }
+  setStatus("載入中...");
+  try {
+    const infoR = await fetch(`${window.WORKER_URL}/api/kvk/rounds/${round}`);
+    if (!infoR.ok) throw new Error(await infoR.text());
+    const info = await infoR.json();
+    renderRoundInfo(info);
+
+    const subR = await fetch(`${window.WORKER_URL}/api/kvk/rounds/${round}/submissions`, {
+      headers: { Authorization: "Bearer " + idToken },
+    });
+    if (!subR.ok) throw new Error(await subR.text());
+    const submissions = await subR.json();
+    renderSubmissions(round, submissions);
+    setStatus(`✅ 已載入 KvK #${round}，共 ${submissions.length} 筆登記`, "ok");
+  } catch (e) {
+    setStatus("載入失敗: " + e.message, "err");
+  }
+}
+
+async function closeRound() {
+  const round = document.getElementById("view-round").value.trim();
+  if (!/^\d+$/.test(round)) { setStatus("請輸入屆數（正整數）", "err"); return; }
+  if (!confirm(`確定要結束 KvK #${round} 的報名嗎？結束後 issue 會被關閉並加上 kvk-prep-closed 標籤。`)) return;
+  setStatus("結束中...");
+  try {
+    const r = await fetch(`${window.WORKER_URL}/api/kvk/rounds/${round}/close`, {
+      method: "POST",
+      headers: { Authorization: "Bearer " + idToken },
+    });
+    if (!r.ok) throw new Error(await r.text());
+    setStatus(`✅ KvK #${round} 已結束`, "ok");
+    loadRound();
+  } catch (e) {
+    setStatus("結束失敗: " + e.message, "err");
+  }
+}
+</script>
+</body>
+</html>
