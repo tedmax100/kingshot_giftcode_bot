@@ -172,6 +172,21 @@ h1{
   font-size:14px;
   padding:9px 10px;
 }
+.id-row{display:flex;gap:8px;align-items:stretch;}
+.id-row input{flex:1;}
+.lookup-btn{
+  flex:0 0 auto;
+  font-size:12px;
+  background:var(--surface-2);
+  border:1px solid var(--line);
+  color:var(--ink-dim);
+  border-radius:6px;
+  padding:0 12px;
+  cursor:pointer;
+  white-space:nowrap;
+}
+.lookup-btn:hover{border-color:var(--gold);color:var(--ink);}
+.lookup-btn:focus-visible{outline:2px solid var(--gold);outline-offset:1px;}
 .field input:focus{outline:none;border-color:var(--gold);}
 .field input:focus-visible{outline:2px solid var(--gold);outline-offset:1px;}
 .field input[readonly]{
@@ -565,7 +580,10 @@ footer{
     <div class="identity-grid">
       <div class="field">
         <label for="playerId">角色 ID</label>
-        <input type="text" id="playerId" inputmode="numeric" autocomplete="off" placeholder="輸入至少 3 碼開始搜尋">
+        <div class="id-row">
+          <input type="text" id="playerId" inputmode="numeric" autocomplete="off" placeholder="輸入至少 3 碼開始搜尋">
+          <button type="button" class="lookup-btn" id="lookupBtn" hidden>查詢上次登記</button>
+        </div>
         <div class="id-matches" id="idMatches" hidden></div>
       </div>
       <div class="field">
@@ -885,7 +903,7 @@ const DAYS = [
       {
         title: "加速道具（分鐘）",
         items: [
-          { label: "建造加速", rate: 30, unit: "分鐘", key: "d1_constructionSpeedup" }
+          { label: "建造加速", rate: 30, unit: "分鐘", key: "d1_constructionSpeedup", type: "duration" }
         ]
       }
     ]
@@ -905,7 +923,7 @@ const DAYS = [
       {
         title: "加速道具（分鐘）",
         items: [
-          { label: "科技加速", rate: 30, unit: "分鐘", key: "d2_researchSpeedup" }
+          { label: "科技加速", rate: 30, unit: "分鐘", key: "d2_researchSpeedup", type: "duration" }
         ]
       }
     ]
@@ -1161,6 +1179,7 @@ const roundBannerTextEl = document.getElementById("roundBannerText");
 const submitRowEl = document.getElementById("submitRow");
 const submitBtnEl = document.getElementById("submitBtn");
 const submitStatusEl = document.getElementById("submitStatus");
+const lookupBtnEl = document.getElementById("lookupBtn");
 
 let roundInfo = null; // { round, issue, startDate, status, url }
 
@@ -1247,6 +1266,7 @@ function renderRoundBanner() {
   if (!currentRound) {
     roundBannerEl.classList.remove("is-visible", "is-closed");
     submitRowEl.hidden = true;
+    lookupBtnEl.hidden = true;
     return;
   }
   roundBannerEl.classList.add("is-visible");
@@ -1254,25 +1274,36 @@ function renderRoundBanner() {
     roundBannerEl.classList.remove("is-closed");
     roundBannerTextEl.innerHTML = `KvK <b>#${currentRound}</b> 報名頁尚未開放（找不到這一屆，請確認連結或洽詢幹部）。`;
     submitRowEl.hidden = true;
+    lookupBtnEl.hidden = true;
     return;
   }
   if (roundInfo.status === "closed") {
     roundBannerEl.classList.add("is-closed");
     roundBannerTextEl.innerHTML = `KvK <b>#${currentRound}</b> 報名已截止，如需異動請直接聯絡幹部。`;
     submitRowEl.hidden = true;
+    lookupBtnEl.hidden = true;
     return;
   }
   roundBannerEl.classList.remove("is-closed");
   roundBannerTextEl.innerHTML = `KvK <b>#${currentRound}</b> 前哨戰報名開放中，填完角色資訊與有空時段後記得按「送出登記」。`;
   submitRowEl.hidden = false;
+  lookupBtnEl.hidden = false;
 }
 
-async function tryPrefillFromServer() {
+async function tryPrefillFromServer(explicit) {
   const playerId = playerIdInput.value.trim();
-  if (!currentRound || !roundInfo || roundInfo.status !== "open" || !playerId) return;
+  if (!currentRound || !roundInfo || roundInfo.status !== "open") return;
+  if (!playerId) {
+    if (explicit) setSubmitStatus("請先輸入角色 ID。", true);
+    return;
+  }
+  if (explicit) setSubmitStatus("查詢中…");
   try {
     const sub = await fetchExistingSubmission(currentRound, playerId);
-    if (!sub) return;
+    if (!sub) {
+      if (explicit) setSubmitStatus(`這一屆還沒有 ID ${playerId} 的登記紀錄。`, true);
+      return;
+    }
     if (sub.playerName) playerNameInput.value = sub.playerName;
     if (sub.guild) {
       selectedGuild = sub.guild;
@@ -1285,14 +1316,16 @@ async function tryPrefillFromServer() {
     applyItems(sub.items);
     const when = sub.submittedAt ? new Date(sub.submittedAt).toLocaleString("zh-TW", { hour12: false }) : "";
     setSubmitStatus(when ? `已帶入上次登記內容（登記於 ${when}），可直接修改後重新送出。` : "已帶入上次登記內容，可直接修改後重新送出。");
-  } catch {
-    // Lookup failure is non-fatal — leave the form as-is.
+  } catch (e) {
+    if (explicit) setSubmitStatus("查詢失敗：" + (e.message || e), true);
   }
 }
 
 playerIdInput.addEventListener("blur", () => {
-  if (playerIdInput.value.trim().length >= 5) tryPrefillFromServer();
+  if (playerIdInput.value.trim().length >= 5) tryPrefillFromServer(false);
 });
+
+lookupBtnEl.addEventListener("click", () => tryPrefillFromServer(true));
 
 async function submitRegistration() {
   if (!currentRound || !roundInfo || roundInfo.status !== "open") return;
