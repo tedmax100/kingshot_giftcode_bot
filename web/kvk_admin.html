@@ -477,7 +477,7 @@ function buildScheduleText(day) {
     const playerId = dayAssignments[idx];
     lines.push(`${time} ${playerId ? (nameById.get(playerId) || playerId) : "none"}`);
   }
-  return lines.join("\n");
+  return lines.join(" ");
 }
 
 async function copyScheduleToClipboard() {
