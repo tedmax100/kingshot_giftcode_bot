@@ -28,6 +28,14 @@
   .round-info { color: #666; font-size: .9em; margin: .5rem 0; }
   .badge { display: inline-block; padding: .1rem .5rem; border-radius: 999px; font-size: .8em; }
   .badge.open { background: #efe; color: #060; }
+  .day-tabs { display: flex; gap: .4rem; margin: 1rem 0 0; }
+  .day-tab { border: 1px solid #ddd; background: #fff; border-radius: 999px; padding: .3rem 1rem; }
+  .day-tab.active { background: #1976d2; color: #fff; border-color: #1976d2; }
+  .schedule-table select { font: inherit; padding: .3rem; max-width: 16rem; }
+  .schedule-table .score { color: #666; font-size: .85em; }
+  .candidates { font-size: .85em; color: #666; }
+  .candidates .cand { display: inline-block; margin: 0 .3rem .2rem 0; padding: .1rem .5rem; border-radius: 999px; background: #f0f0f0; }
+  .unassigned-box { margin-top: .8rem; padding: .6rem .8rem; background: #fff8e1; border-radius: 6px; font-size: .9em; }
   .badge.closed { background: #fee; color: #900; }
   .footer { margin-top: 2rem; color: #888; font-size: .85em; }
 </style>
@@ -91,6 +99,26 @@
       </thead>
       <tbody id="submissions-rows"></tbody>
     </table>
+  </fieldset>
+
+  <fieldset class="box hidden" id="schedule-box">
+    <legend>班表安排</legend>
+    <p class="footer">同一時段有多人登記時，優先安排該天道具積分最高的人；已經排進某個時段的人，會從其他時段的候補名單移除（同一天只會被排一次）。「自動安排」是建議起點，仍可用下拉選單手動調整。</p>
+    <div class="day-tabs" id="day-tabs">
+      <button type="button" class="day-tab" data-day="day1" onclick="selectScheduleDay('day1')">Day 1</button>
+      <button type="button" class="day-tab" data-day="day2" onclick="selectScheduleDay('day2')">Day 2</button>
+      <button type="button" class="day-tab" data-day="day4" onclick="selectScheduleDay('day4')">Day 4</button>
+    </div>
+    <div class="add-form">
+      <button class="primary" onclick="autoAssignCurrentDay()">自動安排這一天</button>
+      <button onclick="renderScheduleDay(currentScheduleDay)">重新整理</button>
+      <button class="primary" onclick="saveSchedule()">儲存班表</button>
+    </div>
+    <table class="schedule-table">
+      <thead><tr><th>時段</th><th>已安排</th><th>候補名單（依積分高到低）</th></tr></thead>
+      <tbody id="schedule-rows"></tbody>
+    </table>
+    <div class="unassigned-box" id="unassigned-box"></div>
   </fieldset>
 
   <p class="footer">建立一屆後，把報名頁連結 <code>kvk_calculator.html#屆數</code> 發給玩家；玩家送出的登記會即時出現在這裡（需重新按「載入」刷新）。</p>
@@ -248,9 +276,187 @@ async function loadRound() {
     if (!subR.ok) throw new Error(await subR.text());
     const submissions = await subR.json();
     renderSubmissions(round, submissions);
+
+    const schR = await fetch(`${window.WORKER_URL}/api/kvk/rounds/${round}/schedule`, {
+      headers: { Authorization: "Bearer " + idToken },
+    });
+    const savedSchedule = schR.ok ? await schR.json() : { day1: {}, day2: {}, day4: {} };
+
+    loadedRound = round;
+    lastSubmissions = submissions;
+    schedule = {
+      day1: savedSchedule.day1 || {},
+      day2: savedSchedule.day2 || {},
+      day4: savedSchedule.day4 || {},
+    };
+    candidatesByDay = {
+      day1: buildCandidates("day1", submissions),
+      day2: buildCandidates("day2", submissions),
+      day4: buildCandidates("day4", submissions),
+    };
+    document.getElementById("schedule-box").classList.remove("hidden");
+    selectScheduleDay(currentScheduleDay);
+
     setStatus(`✅ 已載入 KvK #${round}，共 ${submissions.length} 筆登記`, "ok");
   } catch (e) {
     setStatus("載入失敗: " + e.message, "err");
+  }
+}
+
+// ---- 班表安排：同一天內，時段候補依「這天的道具積分」高到低排序 ----
+const DAY_ITEMS = {
+  day1: [
+    { key: "d1_truegold", rate: 2000 },
+    { key: "d1_temperedTruegold", rate: 30000 },
+    { key: "d1_constructionSpeedup", rate: 30, duration: true },
+  ],
+  day2: [
+    { key: "d2_truegoldDust", rate: 1000 },
+    { key: "d2_researchSpeedup", rate: 30, duration: true },
+  ],
+  day4: [
+    { key: "d4_trainingSpeedup", rate: 90, duration: true },
+  ],
+};
+
+function computeDayScore(day, itemsForDay) {
+  if (!itemsForDay) return 0;
+  let total = 0;
+  (DAY_ITEMS[day] || []).forEach((def) => {
+    const v = itemsForDay[def.key];
+    if (v == null) return;
+    if (def.duration) {
+      const mins = (v.d || 0) * 1440 + (v.h || 0) * 60 + (v.m || 0);
+      total += mins * def.rate;
+    } else {
+      total += (v || 0) * def.rate;
+    }
+  });
+  return total;
+}
+
+function buildCandidates(day, submissions) {
+  const bySlot = {};
+  submissions.forEach((s) => {
+    const slots = (s.availability && s.availability[day]) || [];
+    const score = computeDayScore(day, s.items && s.items[day]);
+    slots.forEach((idx) => {
+      if (!bySlot[idx]) bySlot[idx] = [];
+      bySlot[idx].push({ playerId: s.playerId, playerName: s.playerName || s.playerId, score });
+    });
+  });
+  Object.values(bySlot).forEach((list) => list.sort((a, b) => b.score - a.score));
+  return bySlot;
+}
+
+let loadedRound = null;
+let lastSubmissions = [];
+let candidatesByDay = { day1: {}, day2: {}, day4: {} };
+let schedule = { day1: {}, day2: {}, day4: {} };
+let currentScheduleDay = "day1";
+
+function selectScheduleDay(day) {
+  currentScheduleDay = day;
+  document.querySelectorAll(".day-tab").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.day === day);
+  });
+  renderScheduleDay(day);
+}
+
+function autoAssignCurrentDay() {
+  const day = currentScheduleDay;
+  const bySlot = candidatesByDay[day] || {};
+  const assigned = {};
+  const usedPlayers = new Set();
+  Object.keys(bySlot)
+    .map(Number)
+    .sort((a, b) => a - b)
+    .forEach((idx) => {
+      const list = bySlot[idx].filter((c) => !usedPlayers.has(c.playerId));
+      if (list.length) {
+        assigned[idx] = list[0].playerId;
+        usedPlayers.add(list[0].playerId);
+      }
+    });
+  schedule[day] = assigned;
+  renderScheduleDay(day);
+}
+
+function assignSlot(day, slotIdx, playerId) {
+  const dayAssignments = schedule[day];
+  // A player can only hold one slot per day — clear any other slot they held.
+  Object.keys(dayAssignments).forEach((idx) => {
+    if (dayAssignments[idx] === playerId) delete dayAssignments[idx];
+  });
+  if (playerId) dayAssignments[slotIdx] = playerId;
+  else delete dayAssignments[slotIdx];
+  renderScheduleDay(day);
+}
+
+function renderScheduleDay(day) {
+  const bySlot = candidatesByDay[day] || {};
+  const dayAssignments = schedule[day] || {};
+  const assignedPlayerIds = new Set(Object.values(dayAssignments));
+
+  const rows = Object.keys(bySlot)
+    .map(Number)
+    .sort((a, b) => a - b);
+
+  const tbody = document.getElementById("schedule-rows");
+  tbody.innerHTML = "";
+  if (rows.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="3">這天目前沒有任何人登記有空時段。</td></tr>`;
+  } else {
+    rows.forEach((idx) => {
+      const candidates = bySlot[idx];
+      const assignedId = dayAssignments[idx] || "";
+      const tr = document.createElement("tr");
+      const timeLabel = `${slotIndexToLabel(idx)}–${slotIndexToLabel(idx + 1)}`;
+
+      const options = [`<option value="">（未分配）</option>`]
+        .concat(
+          candidates.map((c) => {
+            const label = `${c.playerName}（${c.score.toLocaleString()} 分）${assignedPlayerIds.has(c.playerId) && c.playerId !== assignedId ? "・已排其他時段" : ""}`;
+            return `<option value="${escapeHtml(c.playerId)}" ${c.playerId === assignedId ? "selected" : ""}>${escapeHtml(label)}</option>`;
+          }),
+        )
+        .join("");
+
+      const candidatesHtml = candidates
+        .map((c) => `<span class="cand">${escapeHtml(c.playerName)}（${c.score.toLocaleString()}）</span>`)
+        .join("");
+
+      tr.innerHTML = `
+        <td>${escapeHtml(timeLabel)}</td>
+        <td><select onchange="assignSlot('${day}', ${idx}, this.value)">${options}</select></td>
+        <td class="candidates">${candidatesHtml}</td>
+      `;
+      tbody.appendChild(tr);
+    });
+  }
+
+  const allCandidateIds = new Map();
+  rows.forEach((idx) => bySlot[idx].forEach((c) => allCandidateIds.set(c.playerId, c.playerName)));
+  const unassigned = [...allCandidateIds.entries()].filter(([id]) => !assignedPlayerIds.has(id));
+  const unassignedBox = document.getElementById("unassigned-box");
+  unassignedBox.textContent = unassigned.length
+    ? `尚未安排（有登記但沒被排進任何時段）：${unassigned.map(([, name]) => name).join("、")}`
+    : "這天所有有登記的人都已經被安排。";
+}
+
+async function saveSchedule() {
+  if (!loadedRound) { setStatus("請先載入一屆", "err"); return; }
+  setStatus("儲存班表中...");
+  try {
+    const r = await fetch(`${window.WORKER_URL}/api/kvk/rounds/${loadedRound}/schedule`, {
+      method: "PUT",
+      headers: { Authorization: "Bearer " + idToken, "Content-Type": "application/json" },
+      body: JSON.stringify({ schedule }),
+    });
+    if (!r.ok) throw new Error(await r.text());
+    setStatus(`✅ KvK #${loadedRound} 班表已儲存`, "ok");
+  } catch (e) {
+    setStatus("儲存失敗: " + e.message, "err");
   }
 }
 

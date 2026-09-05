@@ -9,6 +9,7 @@ GH_REPO = "kingshot_giftcode_bot"
 GH_BRANCH = "main"
 CSV_PATH = "kingshot_players.csv"
 KVK_ROUNDS_PATH = "kvk_rounds.json"
+KVK_SCHEDULE_PATH = "kvk_schedule.json"
 
 # Secrets — set via `npx wrangler secret put <NAME>`:
 #   GITHUB_TOKEN     PAT (fine-grained or classic) with Contents:Read+Write and Issues:Read+Write on this repo

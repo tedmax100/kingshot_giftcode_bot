@@ -18,6 +18,8 @@
 //   GET  /api/kvk/rounds/:round/submissions/:playerId -> { playerId, ... }     [public]
 //   GET  /api/kvk/rounds/:round/submissions -> [ { playerId, ... }, ... ]       [google]
 //   POST /api/kvk/rounds/:round/close                                          [google]
+//   GET  /api/kvk/rounds/:round/schedule -> { day1: {slot: playerId}, ... }     [google]
+//   PUT  /api/kvk/rounds/:round/schedule  body { schedule }                    [google]
 //   POST /api/kvk/rounds/close-due                                             [service token]
 
 const GH_API = "https://api.github.com";
@@ -137,25 +139,23 @@ function ghHeaders(env, extra) {
 const KVK_LABEL = "kvk-prep";
 const KVK_CLOSED_LABEL = "kvk-prep-closed";
 
-// --- kvk_rounds.json (GitHub Contents API) ---------------------------------
+// --- Generic JSON file on GitHub Contents API -------------------------------
 
-async function ghGetRoundsFile(env) {
-  const path = env.KVK_ROUNDS_PATH || "kvk_rounds.json";
+async function ghGetJsonFile(env, path) {
   const url = `${GH_API}/repos/${env.GH_OWNER}/${env.GH_REPO}/contents/${encodeURIComponent(path)}?ref=${env.GH_BRANCH || "main"}`;
   const r = await fetch(url, { headers: ghHeaders(env) });
-  if (r.status === 404) return { rounds: {}, sha: null };
-  if (!r.ok) throw new Error(`GH GET rounds ${r.status}: ${await r.text()}`);
+  if (r.status === 404) return { data: {}, sha: null };
+  if (!r.ok) throw new Error(`GH GET ${path} ${r.status}: ${await r.text()}`);
   const j = await r.json();
-  const rounds = JSON.parse(b64decodeUtf8(j.content) || "{}");
-  return { rounds, sha: j.sha };
+  const data = JSON.parse(b64decodeUtf8(j.content) || "{}");
+  return { data, sha: j.sha };
 }
 
-async function ghPutRoundsFile(env, rounds, sha, message) {
-  const path = env.KVK_ROUNDS_PATH || "kvk_rounds.json";
+async function ghPutJsonFile(env, path, data, sha, message) {
   const url = `${GH_API}/repos/${env.GH_OWNER}/${env.GH_REPO}/contents/${encodeURIComponent(path)}`;
   const body = {
     message,
-    content: b64encodeUtf8(JSON.stringify(rounds, null, 2) + "\n"),
+    content: b64encodeUtf8(JSON.stringify(data, null, 2) + "\n"),
     branch: env.GH_BRANCH || "main",
   };
   if (sha) body.sha = sha;
@@ -164,9 +164,31 @@ async function ghPutRoundsFile(env, rounds, sha, message) {
     headers: ghHeaders(env, { "Content-Type": "application/json" }),
     body: JSON.stringify(body),
   });
-  if (!r.ok) throw new Error(`GH PUT rounds ${r.status}: ${await r.text()}`);
+  if (!r.ok) throw new Error(`GH PUT ${path} ${r.status}: ${await r.text()}`);
   const j = await r.json();
   return j.content.sha;
+}
+
+// --- kvk_rounds.json ---------------------------------------------------
+
+async function ghGetRoundsFile(env) {
+  const { data, sha } = await ghGetJsonFile(env, env.KVK_ROUNDS_PATH || "kvk_rounds.json");
+  return { rounds: data, sha };
+}
+
+async function ghPutRoundsFile(env, rounds, sha, message) {
+  return ghPutJsonFile(env, env.KVK_ROUNDS_PATH || "kvk_rounds.json", rounds, sha, message);
+}
+
+// --- kvk_schedule.json: { [round]: { day1: {slotIndex: playerId}, ... } } --
+
+async function ghGetScheduleFile(env) {
+  const { data, sha } = await ghGetJsonFile(env, env.KVK_SCHEDULE_PATH || "kvk_schedule.json");
+  return { schedules: data, sha };
+}
+
+async function ghPutScheduleFile(env, schedules, sha, message) {
+  return ghPutJsonFile(env, env.KVK_SCHEDULE_PATH || "kvk_schedule.json", schedules, sha, message);
 }
 
 // --- Issues / comments -------------------------------------------------
@@ -546,6 +568,39 @@ export default {
         }
         return withCors(
           new Response(JSON.stringify({ round, status: "closed" }), { headers: { "Content-Type": "application/json" } }),
+          okOrigin,
+        );
+      }
+
+      const scheduleMatch = url.pathname.match(/^\/api\/kvk\/rounds\/([^/]+)\/schedule$/);
+      if (scheduleMatch && req.method === "GET") {
+        const round = Number(scheduleMatch[1]);
+        const { rounds } = await ghGetRoundsFile(env);
+        if (!rounds[round]) {
+          return withCors(new Response("round not found", { status: 404 }), okOrigin);
+        }
+        const { schedules } = await ghGetScheduleFile(env);
+        const schedule = schedules[round] || { day1: {}, day2: {}, day4: {} };
+        return withCors(
+          new Response(JSON.stringify(schedule), { headers: { "Content-Type": "application/json" } }),
+          okOrigin,
+        );
+      }
+      if (scheduleMatch && req.method === "PUT") {
+        const round = Number(scheduleMatch[1]);
+        const { rounds } = await ghGetRoundsFile(env);
+        if (!rounds[round]) {
+          return withCors(new Response("round not found", { status: 404 }), okOrigin);
+        }
+        const body = await req.json();
+        if (!body.schedule || typeof body.schedule !== "object") {
+          return withCors(new Response("schedule required", { status: 400 }), okOrigin);
+        }
+        const { schedules, sha } = await ghGetScheduleFile(env);
+        schedules[round] = body.schedule;
+        await ghPutScheduleFile(env, schedules, sha, `Update KvK #${round} schedule (by ${v.email})`);
+        return withCors(
+          new Response(JSON.stringify({ ok: true }), { headers: { "Content-Type": "application/json" } }),
           okOrigin,
         );
       }

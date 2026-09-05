@@ -143,7 +143,9 @@ admin page 顯示名單、依時段分組、可標記已排班
 - 需登入（沿用現有 Google OAuth 流程，跟改名單的 admin 頁一樣）。
 - 開新一屆：輸入屆數 → 呼叫 `POST /api/kvk/rounds`。
 - 選一屆 → `GET /api/kvk/rounds/13/submissions` → 畫面用時段 × 玩家的表格呈現，方便看哪個時段人多、可以排班。
-- 排班結果目前先不寫回 GitHub（避免把 issue 留言當資料庫用到太複雜），可以先讓幹部人工排完後另外貼公告；之後有需要再考慮加「排班結果」欄位寫回同一則留言或開新留言。
+- **班表安排**（`day1`/`day2`/`day4` 各自獨立）：同一時段可能很多人登記，優先安排**這天道具積分最高**的人（用玩家送出的 `items` 依 `kvk_calculator.html` 的積分規則試算）；一個人一天只會被排一個時段，被排定的人會從其他時段的候補名單移除。「自動安排」是貪婪演算法（依時段先後、每個時段挑目前還沒被排走的最高分候補），幹部仍可用下拉選單手動覆蓋。
+  - 排班結果**會**寫回 GitHub：新增 `kvk_schedule.json`（格式 `{"13": {"day1": {"3": "146553933"}, "day2": {}, "day4": {}}}`，key 是時段格子編號、value 是玩家 ID），跟 `kvk_rounds.json` 用同一套 Contents API 讀寫機制。
+  - Worker 新增 `GET /api/kvk/rounds/:round/schedule`、`PUT /api/kvk/rounds/:round/schedule`（皆需登入）。
 
 ## 6. 已知取捨與風險
 
