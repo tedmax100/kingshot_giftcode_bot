@@ -113,6 +113,7 @@
       <button class="primary" onclick="autoAssignCurrentDay()">自動安排這一天</button>
       <button onclick="renderScheduleDay(currentScheduleDay)">重新整理</button>
       <button class="primary" onclick="saveSchedule()">儲存班表</button>
+      <button onclick="copyScheduleToClipboard()">複製到記事本</button>
     </div>
     <table class="schedule-table">
       <thead><tr><th>時段</th><th>已安排</th><th>候補名單（依積分高到低）</th></tr></thead>
@@ -464,6 +465,29 @@ async function saveSchedule() {
     setStatus(`✅ KvK #${loadedRound} 班表已儲存`, "ok");
   } catch (e) {
     setStatus("儲存失敗: " + e.message, "err");
+  }
+}
+
+function buildScheduleText(day) {
+  const dayAssignments = schedule[day] || {};
+  const nameById = new Map(lastSubmissions.map((s) => [s.playerId, s.playerName || s.playerId]));
+  const lines = [];
+  for (let idx = 0; idx < 48; idx++) {
+    const time = slotIndexToLabel(idx).replace(":", "");
+    const playerId = dayAssignments[idx];
+    lines.push(`${time} ${playerId ? (nameById.get(playerId) || playerId) : "none"}`);
+  }
+  return lines.join("\n");
+}
+
+async function copyScheduleToClipboard() {
+  if (!loadedRound) { setStatus("請先載入一屆", "err"); return; }
+  const text = buildScheduleText(currentScheduleDay);
+  try {
+    await navigator.clipboard.writeText(text);
+    setStatus(`✅ 已複製 ${DAY_LABELS[currentScheduleDay] || currentScheduleDay} 的班表到剪貼簿，貼到記事本即可。`, "ok");
+  } catch (e) {
+    setStatus("複製失敗（瀏覽器可能擋剪貼簿權限）: " + e.message, "err");
   }
 }
 
