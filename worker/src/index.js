@@ -243,7 +243,10 @@ async function ghUpdateComment(env, commentId, body) {
 
 // --- KvK submission formatting -------------------------------------------
 
-const DAY_KEYS = ["day1", "day2", "day3", "day4", "day5", "day6"];
+// Matches the day tabs actually defined in kvk_calculator.html's DAYS array
+// (only Day 1/2/4 currently have scoring rules — not every calendar day of
+// the event has its own availability tab).
+const DAY_KEYS = ["day1", "day2", "day4"];
 
 // Mirrors the 48-slot grid in kvk_calculator.html: slot 0 = 08:00 same day,
 // each slot is 30 minutes, wrapping past midnight into the next day (+1).
@@ -279,9 +282,12 @@ function buildSubmissionComment(sub) {
   const lines = [];
   lines.push(`### 🧑‍🚀 ${sub.playerName}（ID: ${sub.playerId}，聯盟: ${sub.guild || "未填"}）`);
   lines.push("");
-  DAY_KEYS.forEach((key, i) => {
+  DAY_KEYS.forEach((key) => {
+    const dayNum = key.replace("day", "");
     const slots = sub.availability ? sub.availability[key] : undefined;
-    lines.push(`**Day ${i + 1}**：${slotsToRanges(slots)}`);
+    lines.push(`**Day ${dayNum}**：${slotsToRanges(slots)}`);
+    const itemLines = sub.itemsText && Array.isArray(sub.itemsText[key]) ? sub.itemsText[key] : [];
+    itemLines.forEach((line) => lines.push(`　- ${line}`));
   });
   lines.push("");
   lines.push("<details>");
@@ -410,6 +416,9 @@ export default {
           body: `## KvK #${round} 前哨戰報名\n\n報名頁：${signupUrl}\n\n幹部請在下方留言中查看玩家登記資料。`,
           labels: [KVK_LABEL],
         });
+        // GitHub's create-issue endpoint doesn't reliably attach `labels`
+        // passed inline — apply it explicitly to be sure.
+        await ghAddLabels(env, issue.number, [KVK_LABEL]);
         rounds[round] = { issue: issue.number, startDate: body.startDate, status: "open" };
         await ghPutRoundsFile(env, rounds, sha, `Open KvK #${round} prep sign-up (by ${v.email})`);
         return withCors(
@@ -461,6 +470,8 @@ export default {
           guild: String(body.guild || "").trim(),
           submittedAt: new Date().toISOString(),
           availability: body.availability && typeof body.availability === "object" ? body.availability : {},
+          items: body.items && typeof body.items === "object" ? body.items : {},
+          itemsText: body.itemsText && typeof body.itemsText === "object" ? body.itemsText : {},
         };
         const commentBody = buildSubmissionComment(sub);
         const comments = await ghListAllComments(env, entry.issue);

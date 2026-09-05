@@ -932,6 +932,16 @@ const dayNoteEl = document.getElementById("dayNote");
 const footerEl = document.getElementById("footerNote");
 const values = {};
 
+// ---- 道具數量（每日輸入框），持久化到 localStorage，切換分頁/重整不遺失 ----
+const ITEM_VALUES_KEY = "kvk_item_values";
+function loadItemValues() {
+  try { return JSON.parse(localStorage.getItem(ITEM_VALUES_KEY) || "{}"); } catch { return {}; }
+}
+function saveItemValues() {
+  try { localStorage.setItem(ITEM_VALUES_KEY, JSON.stringify(itemValues)); } catch {}
+}
+let itemValues = loadItemValues();
+
 DAYS.forEach(day => {
   const tab = document.createElement("button");
   tab.className = "tab";
@@ -965,13 +975,14 @@ function renderDay(day) {
       const row = document.createElement("div");
 
       if (item.type === "duration") {
+        const dur = itemValues[item.key] || {};
         row.className = "row row-duration";
         row.innerHTML = `
           <div class="row-label">${item.label}<small>${item.rate.toLocaleString()} 分/分鐘</small></div>
           <div class="duration-inputs">
-            <label><input type="number" min="0" step="1" inputmode="numeric" placeholder="0" data-durkey="${item.key}" data-unit="d" data-rate="${item.rate}" aria-label="${item.label}（日）">日</label>
-            <label><input type="number" min="0" step="1" inputmode="numeric" placeholder="0" data-durkey="${item.key}" data-unit="h" data-rate="${item.rate}" aria-label="${item.label}（時）">時</label>
-            <label><input type="number" min="0" step="1" inputmode="numeric" placeholder="0" data-durkey="${item.key}" data-unit="m" data-rate="${item.rate}" aria-label="${item.label}（分）">分</label>
+            <label><input type="number" min="0" step="1" inputmode="numeric" placeholder="0" value="${dur.d || ""}" data-durkey="${item.key}" data-unit="d" data-rate="${item.rate}" aria-label="${item.label}（日）">日</label>
+            <label><input type="number" min="0" step="1" inputmode="numeric" placeholder="0" value="${dur.h || ""}" data-durkey="${item.key}" data-unit="h" data-rate="${item.rate}" aria-label="${item.label}（時）">時</label>
+            <label><input type="number" min="0" step="1" inputmode="numeric" placeholder="0" value="${dur.m || ""}" data-durkey="${item.key}" data-unit="m" data-rate="${item.rate}" aria-label="${item.label}（分）">分</label>
           </div>
         `;
       } else {
@@ -979,7 +990,7 @@ function renderDay(day) {
         row.innerHTML = `
           <div class="row-label">${item.label}</div>
           <div class="row-rate">${item.rate.toLocaleString()} 分/${item.unit}</div>
-          <input type="number" min="0" step="1" inputmode="numeric" placeholder="0" data-key="${item.key}" data-rate="${item.rate}" aria-label="${item.label}">
+          <input type="number" min="0" step="1" inputmode="numeric" placeholder="0" value="${itemValues[item.key] || ""}" data-key="${item.key}" data-rate="${item.rate}" aria-label="${item.label}">
         `;
       }
       rows.appendChild(row);
@@ -1082,6 +1093,7 @@ function recalc() {
     const val = Math.max(0, parseFloat(input.value) || 0);
     const rate = parseFloat(input.dataset.rate);
     values[input.dataset.key] = val * rate;
+    itemValues[input.dataset.key] = val || undefined;
   });
 
   const durationMinutes = {};
@@ -1090,12 +1102,15 @@ function recalc() {
     const key = input.dataset.durkey;
     const perMinute = { d: 1440, h: 60, m: 1 }[input.dataset.unit];
     durationMinutes[key] = (durationMinutes[key] || 0) + val * perMinute;
+    itemValues[key] = itemValues[key] && typeof itemValues[key] === "object" ? itemValues[key] : {};
+    itemValues[key][input.dataset.unit] = val || undefined;
   });
   document.querySelectorAll("input[data-durkey]").forEach(input => {
     const key = input.dataset.durkey;
     const rate = parseFloat(input.dataset.rate);
     values[key] = (durationMinutes[key] || 0) * rate;
   });
+  saveItemValues();
 
   currentDay.groups.forEach(group => {
     let sum = 0;
@@ -1171,6 +1186,51 @@ function applyAvailability(availability) {
   renderAvailability(currentDay);
 }
 
+// ---- 道具數量：組成送出用的 raw/可讀文字，兩種都存進留言方便日後解析或人工看 ----
+function collectItems() {
+  const items = {};
+  const itemsText = {};
+  DAYS.forEach(day => {
+    const raw = {};
+    const text = [];
+    day.groups.forEach(group => {
+      group.items.forEach(item => {
+        if (item.type === "duration") {
+          const dur = itemValues[item.key];
+          const d = (dur && dur.d) || 0, h = (dur && dur.h) || 0, m = (dur && dur.m) || 0;
+          if (d || h || m) {
+            raw[item.key] = { d, h, m };
+            text.push(`${item.label}：${d} 天 ${h} 時 ${m} 分`);
+          }
+        } else {
+          const val = itemValues[item.key] || 0;
+          if (val) {
+            raw[item.key] = val;
+            text.push(`${item.label}：${val} ${item.unit}`);
+          }
+        }
+      });
+    });
+    items[day.id] = raw;
+    itemsText[day.id] = text;
+  });
+  return { items, itemsText };
+}
+
+function applyItems(items) {
+  if (!items || typeof items !== "object") return;
+  DAYS.forEach(day => {
+    const dayItems = items[day.id] || {};
+    day.groups.forEach(group => {
+      group.items.forEach(item => {
+        if (dayItems[item.key] !== undefined) itemValues[item.key] = dayItems[item.key];
+      });
+    });
+  });
+  saveItemValues();
+  renderDay(currentDay);
+}
+
 async function fetchRoundInfo(round) {
   const r = await fetch(`${WORKER_URL}/api/kvk/rounds/${round}`);
   if (!r.ok) return null;
@@ -1222,6 +1282,7 @@ async function tryPrefillFromServer() {
       renderGuildChips();
     }
     applyAvailability(sub.availability);
+    applyItems(sub.items);
     const when = sub.submittedAt ? new Date(sub.submittedAt).toLocaleString("zh-TW", { hour12: false }) : "";
     setSubmitStatus(when ? `已帶入上次登記內容（登記於 ${when}），可直接修改後重新送出。` : "已帶入上次登記內容，可直接修改後重新送出。");
   } catch {
@@ -1244,6 +1305,7 @@ async function submitRegistration() {
   submitBtnEl.disabled = true;
   setSubmitStatus("送出中…");
   try {
+    const { items, itemsText } = collectItems();
     const r = await fetch(`${WORKER_URL}/api/kvk/rounds/${currentRound}/submissions`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -1252,6 +1314,8 @@ async function submitRegistration() {
         playerName,
         guild: selectedGuild || "",
         availability: collectAvailability(),
+        items,
+        itemsText,
       }),
     });
     if (!r.ok) throw new Error(await r.text());

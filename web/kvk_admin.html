@@ -86,6 +86,7 @@
           <th>聯盟</th>
           <th>登記時間</th>
           <th id="avail-head"></th>
+          <th>道具數量</th>
         </tr>
       </thead>
       <tbody id="submissions-rows"></tbody>
@@ -199,7 +200,7 @@ function renderSubmissions(round, submissions) {
   const tbody = document.getElementById("submissions-rows");
   tbody.innerHTML = "";
   if (submissions.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="5">目前還沒有人登記。</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="6">目前還沒有人登記。</td></tr>`;
   } else {
     submissions
       .slice()
@@ -209,6 +210,13 @@ function renderSubmissions(round, submissions) {
         const availText = dayCols
           .map((d) => `${DAY_LABELS[d] || d}：${slotsToRanges((s.availability || {})[d])}`)
           .join("<br>");
+        const itemsText = dayCols
+          .map((d) => {
+            const lines = (s.itemsText && s.itemsText[d]) || [];
+            return lines.length ? `${escapeHtml(DAY_LABELS[d] || d)}：${lines.map(escapeHtml).join("、")}` : "";
+          })
+          .filter(Boolean)
+          .join("<br>") || "（無）";
         const when = s.submittedAt ? new Date(s.submittedAt).toLocaleString("zh-TW", { hour12: false }) : "";
         tr.innerHTML = `
           <td>${escapeHtml(s.playerId)}</td>
@@ -216,6 +224,7 @@ function renderSubmissions(round, submissions) {
           <td>${escapeHtml(s.guild || "")}</td>
           <td>${escapeHtml(when)}</td>
           <td>${availText}</td>
+          <td>${itemsText}</td>
         `;
         tbody.appendChild(tr);
       });
