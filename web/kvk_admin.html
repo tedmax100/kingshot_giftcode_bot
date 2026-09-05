@@ -398,45 +398,52 @@ function renderScheduleDay(day) {
   const dayAssignments = schedule[day] || {};
   const assignedPlayerIds = new Set(Object.values(dayAssignments));
 
-  const rows = Object.keys(bySlot)
-    .map(Number)
-    .sort((a, b) => a - b);
+  // Always show the full 08:00 -> next-day 08:00 grid (48 slots), not just
+  // slots someone happened to register for, so it reads as a real schedule
+  // board rather than jumping straight to the first registered time.
+  const rows = Array.from({ length: 48 }, (_, i) => i);
 
   const tbody = document.getElementById("schedule-rows");
   tbody.innerHTML = "";
-  if (rows.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="3">這天目前沒有任何人登記有空時段。</td></tr>`;
-  } else {
-    rows.forEach((idx) => {
-      const candidates = bySlot[idx];
-      const assignedId = dayAssignments[idx] || "";
-      const tr = document.createElement("tr");
-      const timeLabel = `${slotIndexToLabel(idx)}–${slotIndexToLabel(idx + 1)}`;
+  rows.forEach((idx) => {
+    const candidates = bySlot[idx] || [];
+    const assignedId = dayAssignments[idx] || "";
+    const tr = document.createElement("tr");
+    const timeLabel = `${slotIndexToLabel(idx)}–${slotIndexToLabel(idx + 1)}`;
 
-      const options = [`<option value="">（未分配）</option>`]
-        .concat(
-          candidates.map((c) => {
-            const label = `${c.playerName}（${c.score.toLocaleString()} 分）${assignedPlayerIds.has(c.playerId) && c.playerId !== assignedId ? "・已排其他時段" : ""}`;
-            return `<option value="${escapeHtml(c.playerId)}" ${c.playerId === assignedId ? "selected" : ""}>${escapeHtml(label)}</option>`;
-          }),
-        )
-        .join("");
-
-      const candidatesHtml = candidates
-        .map((c) => `<span class="cand">${escapeHtml(c.playerName)}（${c.score.toLocaleString()}）</span>`)
-        .join("");
-
+    if (candidates.length === 0) {
       tr.innerHTML = `
         <td>${escapeHtml(timeLabel)}</td>
-        <td><select onchange="assignSlot('${day}', ${idx}, this.value)">${options}</select></td>
-        <td class="candidates">${candidatesHtml}</td>
+        <td>（無人登記）</td>
+        <td class="candidates"></td>
       `;
       tbody.appendChild(tr);
-    });
-  }
+      return;
+    }
+
+    const options = [`<option value="">（未分配）</option>`]
+      .concat(
+        candidates.map((c) => {
+          const label = `${c.playerName}（${c.score.toLocaleString()} 分）${assignedPlayerIds.has(c.playerId) && c.playerId !== assignedId ? "・已排其他時段" : ""}`;
+          return `<option value="${escapeHtml(c.playerId)}" ${c.playerId === assignedId ? "selected" : ""}>${escapeHtml(label)}</option>`;
+        }),
+      )
+      .join("");
+
+    const candidatesHtml = candidates
+      .map((c) => `<span class="cand">${escapeHtml(c.playerName)}（${c.score.toLocaleString()}）</span>`)
+      .join("");
+
+    tr.innerHTML = `
+      <td>${escapeHtml(timeLabel)}</td>
+      <td><select onchange="assignSlot('${day}', ${idx}, this.value)">${options}</select></td>
+      <td class="candidates">${candidatesHtml}</td>
+    `;
+    tbody.appendChild(tr);
+  });
 
   const allCandidateIds = new Map();
-  rows.forEach((idx) => bySlot[idx].forEach((c) => allCandidateIds.set(c.playerId, c.playerName)));
+  rows.forEach((idx) => (bySlot[idx] || []).forEach((c) => allCandidateIds.set(c.playerId, c.playerName)));
   const unassigned = [...allCandidateIds.entries()].filter(([id]) => !assignedPlayerIds.has(id));
   const unassignedBox = document.getElementById("unassigned-box");
   unassignedBox.textContent = unassigned.length
