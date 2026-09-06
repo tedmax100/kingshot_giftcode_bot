@@ -631,6 +631,14 @@ footer{
 </div>
 
 <script>
+// ---- 語言偵測：瀏覽器語言為中文則用中文，否則英文 ----
+// 注意：有空時段一律以「時段索引」送出，伺服器端固定以 UTC+8 台灣時區解讀，
+// 因此寫進 GitHub issue 的時間永遠是 UTC+8；英文介面只是把顯示標籤換算成 UTC+0。
+const LANG = String(navigator.language || navigator.userLanguage || "en").toLowerCase().startsWith("zh") ? "zh" : "en";
+document.documentElement.lang = LANG === "zh" ? "zh-Hant" : "en";
+const LOCALE = LANG === "zh" ? "zh-TW" : "en-US";
+function tr(zh, en) { return LANG === "zh" ? zh : en; }
+
 // ---- 玩家名單（來自 kingshot_players.csv，靜態快照）----
 const PLAYERS_CSV = `143080583,叮叮蛋,1034
 157894566,派大星公爵的農奴,1000
@@ -777,7 +785,7 @@ playerIdInput.addEventListener("input", () => {
   if (query.length < 3) {
     idMatchesEl.hidden = true;
     idMatchesEl.innerHTML = "";
-    setIdentityStatus("輸入至少 3 碼角色 ID 開始搜尋名單。", true);
+    setIdentityStatus(tr("輸入至少 3 碼角色 ID 開始搜尋名單。", "Type at least 3 digits of your character ID to search the roster."), true);
     return;
   }
 
@@ -786,7 +794,7 @@ playerIdInput.addEventListener("input", () => {
   if (matches.length === 0) {
     idMatchesEl.hidden = true;
     idMatchesEl.innerHTML = "";
-    setIdentityStatus("名單中找不到符合的角色 ID，請自行輸入玩家名稱。");
+    setIdentityStatus(tr("名單中找不到符合的角色 ID，請自行輸入玩家名稱。", "No matching character ID in the roster — please enter your player name manually."));
     return;
   }
 
@@ -795,13 +803,13 @@ playerIdInput.addEventListener("input", () => {
   matches.forEach(p => {
     const row = document.createElement("div");
     row.className = "id-match";
-    row.innerHTML = `<b>${p.id}</b><span>${p.name || "（無名稱）"}${p.kingdom ? " · 王國 " + p.kingdom : ""}</span>`;
+    row.innerHTML = `<b>${p.id}</b><span>${p.name || tr("（無名稱）", "(no name)")}${p.kingdom ? tr(" · 王國 ", " · Kingdom ") + p.kingdom : ""}</span>`;
     row.addEventListener("click", () => {
       playerIdInput.value = p.id;
       playerNameInput.value = p.name || "";
       playerNameInput.readOnly = !!p.name;
       idMatchesEl.hidden = true;
-      setIdentityStatus(p.name ? "已從名單帶入玩家名稱。" : "名單中此 ID 沒有名稱，請自行輸入。");
+      setIdentityStatus(p.name ? tr("已從名單帶入玩家名稱。", "Player name filled in from the roster.") : tr("名單中此 ID 沒有名稱，請自行輸入。", "This ID has no name in the roster — please enter it yourself."));
     });
     idMatchesEl.appendChild(row);
   });
@@ -811,9 +819,9 @@ playerIdInput.addEventListener("input", () => {
     playerNameInput.value = exact.name || "";
     playerNameInput.readOnly = !!exact.name;
     idMatchesEl.hidden = true;
-    setIdentityStatus(exact.name ? "已從名單帶入玩家名稱。" : "名單中此 ID 沒有名稱，請自行輸入。");
+    setIdentityStatus(exact.name ? tr("已從名單帶入玩家名稱。", "Player name filled in from the roster.") : tr("名單中此 ID 沒有名稱，請自行輸入。", "This ID has no name in the roster — please enter it yourself."));
   } else {
-    setIdentityStatus(matches.length + " 筆相符，請從下方清單點選。", false);
+    setIdentityStatus(tr(matches.length + " 筆相符，請從下方清單點選。", matches.length + " matches — pick one from the list below."), false);
   }
 });
 
@@ -859,12 +867,12 @@ function renderGuildChips() {
   const addBtn = document.createElement("button");
   addBtn.type = "button";
   addBtn.className = "guild-chip";
-  addBtn.textContent = "+ 新增聯盟";
+  addBtn.textContent = tr("+ 新增聯盟", "+ Add alliance");
   addBtn.addEventListener("click", () => {
     const input = document.createElement("input");
     input.type = "text";
     input.className = "guild-add-input";
-    input.placeholder = "輸入聯盟名稱";
+    input.placeholder = tr("輸入聯盟名稱", "Alliance name");
     addBtn.replaceWith(input);
     input.focus();
     const commit = () => {
@@ -883,27 +891,58 @@ function renderGuildChips() {
   guildChipsEl.appendChild(addBtn);
 }
 
+// ---- 靜態 HTML 文字：英文介面時整批換成英文 ----
+function applyStaticI18n() {
+  if (LANG === "zh") return;
+  const set = (sel, txt, idx) => {
+    const els = document.querySelectorAll(sel);
+    const el = idx == null ? els[0] : els[idx];
+    if (el) el.textContent = txt;
+  };
+  document.title = "KvK Prep Score Calculator";
+  set(".eyebrow", "Kingshot · KvK Prep");
+  set("h1", "KvK Prep Score Calculator");
+  set(".sub", "Pick a day, enter the materials and speedups you plan to spend, and get your prep score instantly. High-value items differ each day — before spending, make sure the wolf-team, speedup and Prime Minister buffs are all active.");
+  set(".avail-title", "Reporter info", 0);
+  set(".avail-title", "Availability (UTC+0)", 1);
+  set('label[for="playerId"]', "Character ID");
+  set('label[for="playerName"]', "Player name");
+  set(".identity-grid .field:last-child label", "Alliance");
+  set(".avail-hint", "The roster is a static snapshot of kingshot_players.csv; regenerate this page after the roster changes.", 0);
+  set(".avail-hint", "One cell = 30 min, covering 00:00–24:00 UTC. Tap every slot you can be online that day (multiple allowed). Your entry is still recorded in UTC+8 (Taiwan) time.", 1);
+  set(".summary-label", "Estimated total score");
+  playerIdInput.placeholder = "Type at least 3 digits to search";
+  playerNameInput.placeholder = "Enter manually if the ID isn't listed";
+  document.getElementById("lookupBtn").textContent = "Load last entry";
+  document.getElementById("submitBtn").textContent = "Submit entry";
+  document.getElementById("availResetBtn").textContent = "Clear today's slots";
+  document.getElementById("resetBtn").textContent = "Clear today's inputs";
+}
+
 renderGuildChips();
-setIdentityStatus("輸入至少 3 碼角色 ID 開始搜尋名單。", true);
+setIdentityStatus(tr("輸入至少 3 碼角色 ID 開始搜尋名單。", "Type at least 3 digits of your character ID to search the roster."), true);
+applyStaticI18n();
 
 const DAYS = [
   {
     id: "day1",
     label: "Day 1",
-    note: "重點在真金升級——別忘了先吃狼隊、加速、首相三重 Buff。",
-    source: "真金 2,000 分／淬鍊真金 30,000 分／建造加速每分鐘 30 分。",
+    note: tr("重點在真金升級——別忘了先吃狼隊、加速、首相三重 Buff。",
+             "Focus on True Gold upgrades — make sure the wolf-team, speedup and Prime Minister buffs are all active first."),
+    source: tr("真金 2,000 分／淬鍊真金 30,000 分／建造加速每分鐘 30 分。",
+               "True Gold 2,000 pts / Tempered True Gold 30,000 pts / construction speedup 30 pts per minute."),
     groups: [
       {
-        title: "真金建設 / 科技",
+        title: tr("真金建設 / 科技", "True Gold builds / research"),
         items: [
-          { label: "使用真金（建築升級）", rate: 2000, unit: "個", key: "d1_truegold" },
-          { label: "使用淬鍊真金（建築升級）", rate: 30000, unit: "個", key: "d1_temperedTruegold" }
+          { label: tr("使用真金（建築升級）", "Use True Gold (building upgrade)"), rate: 2000, unit: tr("個", "ea"), key: "d1_truegold" },
+          { label: tr("使用淬鍊真金（建築升級）", "Use Tempered True Gold (building upgrade)"), rate: 30000, unit: tr("個", "ea"), key: "d1_temperedTruegold" }
         ]
       },
       {
-        title: "加速道具（分鐘）",
+        title: tr("加速道具（分鐘）", "Speedups (minutes)"),
         items: [
-          { label: "建造加速", rate: 30, unit: "分鐘", key: "d1_constructionSpeedup", type: "duration" }
+          { label: tr("建造加速", "Construction speedup"), rate: 30, unit: tr("分鐘", "min"), key: "d1_constructionSpeedup", type: "duration" }
         ]
       }
     ]
@@ -911,19 +950,21 @@ const DAYS = [
   {
     id: "day2",
     label: "Day 2",
-    note: "真金石粉與科技加速是這天的重點。",
-    source: "真金石粉 1,000 分／科技加速每分鐘 30 分。",
+    note: tr("真金石粉與科技加速是這天的重點。",
+             "True Gold Dust and research speedups are the focus this day."),
+    source: tr("真金石粉 1,000 分／科技加速每分鐘 30 分。",
+               "True Gold Dust 1,000 pts / research speedup 30 pts per minute."),
     groups: [
       {
-        title: "真金建設 / 科技",
+        title: tr("真金建設 / 科技", "True Gold builds / research"),
         items: [
-          { label: "使用真金石粉（科技研究）", rate: 1000, unit: "個", key: "d2_truegoldDust" }
+          { label: tr("使用真金石粉（科技研究）", "Use True Gold Dust (research)"), rate: 1000, unit: tr("個", "ea"), key: "d2_truegoldDust" }
         ]
       },
       {
-        title: "加速道具（分鐘）",
+        title: tr("加速道具（分鐘）", "Speedups (minutes)"),
         items: [
-          { label: "科技加速", rate: 30, unit: "分鐘", key: "d2_researchSpeedup", type: "duration" }
+          { label: tr("科技加速", "Research speedup"), rate: 30, unit: tr("分鐘", "min"), key: "d2_researchSpeedup", type: "duration" }
         ]
       }
     ]
@@ -931,13 +972,14 @@ const DAYS = [
   {
     id: "day4",
     label: "Day 4",
-    note: "這天以練兵加速道具為主力，每 1 分鐘加速可換 90 積分，換算成日／時／分輸入即可。",
-    source: "練兵加速道具每分鐘 90 分。",
+    note: tr("這天以練兵加速道具為主力，每 1 分鐘加速可換 90 積分，換算成日／時／分輸入即可。",
+             "Training speedups carry this day: 1 minute of speedup = 90 pts. Enter the amount as days / hours / minutes."),
+    source: tr("練兵加速道具每分鐘 90 分。", "Training speedup 90 pts per minute."),
     groups: [
       {
-        title: "練兵加速",
+        title: tr("練兵加速", "Training speedup"),
         items: [
-          { label: "練兵加速道具", rate: 90, unit: "分鐘", key: "d4_trainingSpeedup", type: "duration" }
+          { label: tr("練兵加速道具", "Training speedup item"), rate: 90, unit: tr("分鐘", "min"), key: "d4_trainingSpeedup", type: "duration" }
         ]
       }
     ]
@@ -974,7 +1016,10 @@ DAYS.forEach(day => {
 function renderDay(day) {
   groupsEl.innerHTML = "";
   dayNoteEl.textContent = day.note;
-  footerEl.textContent = "資料來源：Kingshot KvK 官方 " + day.label + " 積分規則（" + day.source + "）此工具僅供估算，實際活動積分請以遊戲內公告為準。";
+  footerEl.textContent = tr(
+    "資料來源：Kingshot KvK 官方 " + day.label + " 積分規則（" + day.source + "）此工具僅供估算，實際活動積分請以遊戲內公告為準。",
+    "Source: Kingshot KvK official " + day.label + " scoring rules (" + day.source + ") This tool is an estimate only; the in-game announcement is authoritative."
+  );
 
   day.groups.forEach(group => {
     const groupEl = document.createElement("div");
@@ -982,7 +1027,7 @@ function renderDay(day) {
 
     const head = document.createElement("div");
     head.className = "group-head";
-    head.innerHTML = `<span class="group-title">${group.title}</span><span class="group-subtotal" data-group="${group.title}">小計 <b>0</b> 分</span>`;
+    head.innerHTML = `<span class="group-title">${group.title}</span><span class="group-subtotal" data-group="${group.title}">${tr("小計 <b>0</b> 分", "Subtotal <b>0</b> pts")}</span>`;
     groupEl.appendChild(head);
 
     const rows = document.createElement("div");
@@ -996,18 +1041,18 @@ function renderDay(day) {
         const dur = itemValues[item.key] || {};
         row.className = "row row-duration";
         row.innerHTML = `
-          <div class="row-label">${item.label}<small>${item.rate.toLocaleString()} 分/分鐘</small></div>
+          <div class="row-label">${item.label}<small>${item.rate.toLocaleString()} ${tr("分/分鐘", "pts/min")}</small></div>
           <div class="duration-inputs">
-            <label><input type="number" min="0" step="1" inputmode="numeric" placeholder="0" value="${dur.d || ""}" data-durkey="${item.key}" data-unit="d" data-rate="${item.rate}" aria-label="${item.label}（日）">日</label>
-            <label><input type="number" min="0" step="1" inputmode="numeric" placeholder="0" value="${dur.h || ""}" data-durkey="${item.key}" data-unit="h" data-rate="${item.rate}" aria-label="${item.label}（時）">時</label>
-            <label><input type="number" min="0" step="1" inputmode="numeric" placeholder="0" value="${dur.m || ""}" data-durkey="${item.key}" data-unit="m" data-rate="${item.rate}" aria-label="${item.label}（分）">分</label>
+            <label><input type="number" min="0" step="1" inputmode="numeric" placeholder="0" value="${dur.d || ""}" data-durkey="${item.key}" data-unit="d" data-rate="${item.rate}" aria-label="${item.label} ${tr("（日）", "(days)")}">${tr("日", "d")}</label>
+            <label><input type="number" min="0" step="1" inputmode="numeric" placeholder="0" value="${dur.h || ""}" data-durkey="${item.key}" data-unit="h" data-rate="${item.rate}" aria-label="${item.label} ${tr("（時）", "(hours)")}">${tr("時", "h")}</label>
+            <label><input type="number" min="0" step="1" inputmode="numeric" placeholder="0" value="${dur.m || ""}" data-durkey="${item.key}" data-unit="m" data-rate="${item.rate}" aria-label="${item.label} ${tr("（分）", "(minutes)")}">${tr("分", "m")}</label>
           </div>
         `;
       } else {
         row.className = "row";
         row.innerHTML = `
           <div class="row-label">${item.label}</div>
-          <div class="row-rate">${item.rate.toLocaleString()} 分/${item.unit}</div>
+          <div class="row-rate">${item.rate.toLocaleString()} ${tr("分/", "pts/")}${item.unit}</div>
           <input type="number" min="0" step="1" inputmode="numeric" placeholder="0" value="${itemValues[item.key] || ""}" data-key="${item.key}" data-rate="${item.rate}" aria-label="${item.label}">
         `;
       }
@@ -1047,6 +1092,23 @@ const SLOTS = (() => {
   return list;
 })();
 
+// 時段顯示：中文用 GMT+8 台北時間（08:00 起，跨日標 +1）；
+// 英文用 UTC+0（等於台北時間 -8 小時，剛好從 00:00 起排到 24:00）。
+// 不論語言，送出的都是同一組時段索引，伺服器端固定以 UTC+8 記錄。
+function slotDisplay(idx) {
+  const s = SLOTS[idx];
+  if (LANG === "zh") {
+    return {
+      text: s.label + (s.dayOffset === 1 ? "+1" : ""),
+      aria: (s.dayOffset === 1 ? "隔天 " : "當天 ") + s.label,
+    };
+  }
+  const total = idx * 30; // 分鐘，從 00:00 UTC 起算
+  const h = Math.floor(total / 60), m = total % 60;
+  const lbl = String(h).padStart(2, "0") + ":" + String(m).padStart(2, "0");
+  return { text: lbl, aria: lbl + " UTC" };
+}
+
 const availGridEl = document.getElementById("availGrid");
 const availCountEl = document.getElementById("availCount");
 const availResetBtn = document.getElementById("availResetBtn");
@@ -1078,9 +1140,10 @@ function renderAvailability(day) {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "slot" + (slot.dayOffset === 1 && SLOTS[idx - 1] && SLOTS[idx - 1].dayOffset === 0 ? " slot-daybreak" : "");
-    btn.textContent = slot.label + (slot.dayOffset === 1 ? "+1" : "");
+    const disp = slotDisplay(idx);
+    btn.textContent = disp.text;
     btn.setAttribute("aria-pressed", selected.has(idx) ? "true" : "false");
-    btn.setAttribute("aria-label", (slot.dayOffset === 1 ? "隔天 " : "當天 ") + slot.label);
+    btn.setAttribute("aria-label", disp.aria);
     btn.addEventListener("click", () => {
       if (selected.has(idx)) selected.delete(idx); else selected.add(idx);
       btn.setAttribute("aria-pressed", selected.has(idx) ? "true" : "false");
@@ -1094,7 +1157,7 @@ function renderAvailability(day) {
 }
 
 function updateAvailCount(selected) {
-  availCountEl.textContent = "已選 " + selected.size + " 段";
+  availCountEl.textContent = tr("已選 " + selected.size + " 段", selected.size + " selected");
 }
 
 availResetBtn.addEventListener("click", () => {
@@ -1142,7 +1205,7 @@ function recalc() {
     el.querySelector("b").textContent = Math.round(perGroup[g]).toLocaleString();
   });
 
-  document.getElementById("grandTotal").innerHTML = Math.round(grand).toLocaleString() + "<span>分</span>";
+  document.getElementById("grandTotal").innerHTML = Math.round(grand).toLocaleString() + tr("<span>分</span>", "<span>pts</span>");
 
   const breakdown = document.getElementById("breakdown");
   breakdown.innerHTML = "";
@@ -1219,13 +1282,13 @@ function collectItems() {
           const d = (dur && dur.d) || 0, h = (dur && dur.h) || 0, m = (dur && dur.m) || 0;
           if (d || h || m) {
             raw[item.key] = { d, h, m };
-            text.push(`${item.label}：${d} 天 ${h} 時 ${m} 分`);
+            text.push(`${item.label}${tr("：", ": ")}${d}${tr(" 天 ", "d ")}${h}${tr(" 時 ", "h ")}${m}${tr(" 分", "m")}`);
           }
         } else {
           const val = itemValues[item.key] || 0;
           if (val) {
             raw[item.key] = val;
-            text.push(`${item.label}：${val} ${item.unit}`);
+            text.push(`${item.label}${tr("：", ": ")}${val} ${item.unit}`);
           }
         }
       });
@@ -1272,20 +1335,26 @@ function renderRoundBanner() {
   roundBannerEl.classList.add("is-visible");
   if (!roundInfo) {
     roundBannerEl.classList.remove("is-closed");
-    roundBannerTextEl.innerHTML = `KvK <b>#${currentRound}</b> 報名頁尚未開放（找不到這一屆，請確認連結或洽詢幹部）。`;
+    roundBannerTextEl.innerHTML = tr(
+      `KvK <b>#${currentRound}</b> 報名頁尚未開放（找不到這一屆，請確認連結或洽詢幹部）。`,
+      `KvK <b>#${currentRound}</b> sign-up isn't open yet (this round wasn't found — check the link or ask an officer).`);
     submitRowEl.hidden = true;
     lookupBtnEl.hidden = true;
     return;
   }
   if (roundInfo.status === "closed") {
     roundBannerEl.classList.add("is-closed");
-    roundBannerTextEl.innerHTML = `KvK <b>#${currentRound}</b> 報名已截止，如需異動請直接聯絡幹部。`;
+    roundBannerTextEl.innerHTML = tr(
+      `KvK <b>#${currentRound}</b> 報名已截止，如需異動請直接聯絡幹部。`,
+      `KvK <b>#${currentRound}</b> sign-up is closed. Contact an officer for changes.`);
     submitRowEl.hidden = true;
     lookupBtnEl.hidden = true;
     return;
   }
   roundBannerEl.classList.remove("is-closed");
-  roundBannerTextEl.innerHTML = `KvK <b>#${currentRound}</b> 前哨戰報名開放中，填完角色資訊與有空時段後記得按「送出登記」。`;
+  roundBannerTextEl.innerHTML = tr(
+    `KvK <b>#${currentRound}</b> 前哨戰報名開放中，填完角色資訊與有空時段後記得按「送出登記」。`,
+    `KvK <b>#${currentRound}</b> prep sign-up is open. Fill in your character info and availability, then hit "Submit entry".`);
   submitRowEl.hidden = false;
   lookupBtnEl.hidden = false;
 }
@@ -1294,14 +1363,14 @@ async function tryPrefillFromServer(explicit) {
   const playerId = playerIdInput.value.trim();
   if (!currentRound || !roundInfo || roundInfo.status !== "open") return;
   if (!playerId) {
-    if (explicit) setSubmitStatus("請先輸入角色 ID。", true);
+    if (explicit) setSubmitStatus(tr("請先輸入角色 ID。", "Enter your character ID first."), true);
     return;
   }
-  if (explicit) setSubmitStatus("查詢中…");
+  if (explicit) setSubmitStatus(tr("查詢中…", "Looking up…"));
   try {
     const sub = await fetchExistingSubmission(currentRound, playerId);
     if (!sub) {
-      if (explicit) setSubmitStatus(`這一屆還沒有 ID ${playerId} 的登記紀錄。`, true);
+      if (explicit) setSubmitStatus(tr(`這一屆還沒有 ID ${playerId} 的登記紀錄。`, `No entry for ID ${playerId} in this round yet.`), true);
       return;
     }
     if (sub.playerName) playerNameInput.value = sub.playerName;
@@ -1314,10 +1383,12 @@ async function tryPrefillFromServer(explicit) {
     }
     applyAvailability(sub.availability);
     applyItems(sub.items);
-    const when = sub.submittedAt ? new Date(sub.submittedAt).toLocaleString("zh-TW", { hour12: false }) : "";
-    setSubmitStatus(when ? `已帶入上次登記內容（登記於 ${when}），可直接修改後重新送出。` : "已帶入上次登記內容，可直接修改後重新送出。");
+    const when = sub.submittedAt ? new Date(sub.submittedAt).toLocaleString(LOCALE, { hour12: false, timeZone: "Asia/Taipei" }) + " (UTC+8)" : "";
+    setSubmitStatus(when
+      ? tr(`已帶入上次登記內容（登記於 ${when}），可直接修改後重新送出。`, `Loaded your last entry (submitted ${when}). Edit and re-submit as needed.`)
+      : tr("已帶入上次登記內容，可直接修改後重新送出。", "Loaded your last entry. Edit and re-submit as needed."));
   } catch (e) {
-    if (explicit) setSubmitStatus("查詢失敗：" + (e.message || e), true);
+    if (explicit) setSubmitStatus(tr("查詢失敗：", "Lookup failed: ") + (e.message || e), true);
   }
 }
 
@@ -1332,11 +1403,11 @@ async function submitRegistration() {
   const playerId = playerIdInput.value.trim();
   const playerName = playerNameInput.value.trim();
   if (!playerId || !playerName) {
-    setSubmitStatus("請先填寫角色 ID 與玩家名稱。", true);
+    setSubmitStatus(tr("請先填寫角色 ID 與玩家名稱。", "Fill in your character ID and player name first."), true);
     return;
   }
   submitBtnEl.disabled = true;
-  setSubmitStatus("送出中…");
+  setSubmitStatus(tr("送出中…", "Submitting…"));
   try {
     const { items, itemsText } = collectItems();
     const r = await fetch(`${WORKER_URL}/api/kvk/rounds/${currentRound}/submissions`, {
@@ -1352,9 +1423,9 @@ async function submitRegistration() {
       }),
     });
     if (!r.ok) throw new Error(await r.text());
-    setSubmitStatus("已登記，若時段有更新可重新送出。");
+    setSubmitStatus(tr("已登記，若時段有更新可重新送出。", "Entry recorded. Re-submit if your availability changes."));
   } catch (e) {
-    setSubmitStatus("送出失敗：" + (e.message || e), true);
+    setSubmitStatus(tr("送出失敗：", "Submit failed: ") + (e.message || e), true);
   } finally {
     setTimeout(() => { submitBtnEl.disabled = false; }, 5000);
   }
