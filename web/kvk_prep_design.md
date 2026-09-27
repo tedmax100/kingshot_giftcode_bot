@@ -158,7 +158,7 @@ admin page 顯示名單、依時段分組、可標記已排班
 
 ## 8. 活動結束排程（startDate + 5 天截止）
 
-> **更新：已改為只手動關閉。** `kvk_prep_close.yml` 的每日 cron 已移除（只保留 `workflow_dispatch`），報名一律由幹部在 admin page 按「結束本屆」關閉。以下為原始設計，保留作參考。
+> **更新：已改為只手動關閉。** `kvk_prep_close.yml` workflow 已整個刪除，報名一律由幹部在 admin page 按「結束本屆」關閉。以下為原始設計，保留作參考。
 
 因為幹部通常會提早開始收集登記，所以報名截止不是活動當天，而是 `startDate + 5 天`（`startDate` 是建立這一屆、開放報名的那天）。結束時要能讓 issue 一眼看出「已截止」，不能再被誤認成還開放中：
 

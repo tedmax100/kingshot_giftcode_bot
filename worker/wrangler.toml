@@ -16,5 +16,5 @@ KVK_SCHEDULE_PATH = "kvk_schedule.json"
 #   GOOGLE_CLIENT_ID OAuth Web client ID from Google Cloud Console
 #   ALLOWED_EMAILS   comma-separated allowlist, e.g. "tedmax100@gmail.com"
 #   ALLOWED_ORIGINS  comma-separated, e.g. "https://tedmax100.github.io"
-#   KVK_CLOSE_TOKEN  random static token, called by .github/workflows/kvk_prep_close.yml
+#   KVK_CLOSE_TOKEN  random static token for POST /api/kvk/rounds/close-due (no scheduled caller now)
 #                    (same value must be set as the repo secret KVK_CLOSE_TOKEN)

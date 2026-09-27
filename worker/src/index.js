@@ -358,9 +358,9 @@ export default {
   async fetch(req, env) {
     const url = new URL(req.url);
 
-    // The close-due endpoint is called server-to-server by a GitHub Actions
-    // schedule (see .github/workflows/kvk_prep_close.yml) — no browser
-    // Origin header, and auth is a static service token, not Google OAuth.
+    // The close-due endpoint is for server-to-server calls (the GitHub Actions
+    // schedule that used it has been removed; rounds are closed manually) — no
+    // browser Origin header, and auth is a static service token, not Google OAuth.
     if (url.pathname === "/api/kvk/rounds/close-due" && req.method === "POST") {
       const auth = req.headers.get("Authorization") || "";
       const m = auth.match(/^Bearer (.+)$/);
