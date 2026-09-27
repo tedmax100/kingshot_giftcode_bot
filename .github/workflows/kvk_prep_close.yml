@@ -1,9 +1,8 @@
 name: Close finished KvK prep rounds
 
+# Auto-close is disabled: rounds are closed manually from kvk_admin.html.
+# Kept as a manual-only trigger that closes every open round past startDate + 5 days.
 on:
-  schedule:
-    # 09:00 Asia/Taipei (UTC+8) == 01:00 UTC
-    - cron: "0 1 * * *"
   workflow_dispatch: {}
 
 jobs:
