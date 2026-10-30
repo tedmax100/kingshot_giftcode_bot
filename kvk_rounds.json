@@ -8,5 +8,10 @@
     "issue": 3,
     "startDate": "2026-09-27",
     "status": "closed"
+  },
+  "3": {
+    "issue": 4,
+    "startDate": "2026-10-30",
+    "status": "open"
   }
 }
